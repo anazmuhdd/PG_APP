@@ -5,6 +5,7 @@ const {
 } = require("@whiskeysockets/baileys");
 const axios = require("axios");
 const qrcode = require("qrcode-terminal");
+const QRCode = require("qrcode");
 const cron = require("node-cron");
 
 const PG_GROUP_JID = "120363404470997481@g.us";
@@ -20,7 +21,7 @@ const PG_MEMBERS = [
   { id: "919207605231@s.whatsapp.net", name: "Nikhil" },
 ];
 
-// Track who has submitted orders (local cache)
+// Track who has submitted orders
 let todaysReplies = {};
 
 function resetReplies() {
@@ -32,25 +33,36 @@ function resetReplies() {
 
 async function startSock() {
   const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
-  const sock = makeWASocket({ auth: state });
+  const sock = makeWASocket({ auth: state, printQRInTerminal: false });
 
   // QR & Connection
-  sock.ev.on("connection.update", ({ connection, qr, lastDisconnect }) => {
-    if (qr) {
-      console.log("📲 Scan the QR Code:");
-      qrcode.generate(qr, { small: true });
-      qrcode;
+  sock.ev.on(
+    "connection.update",
+    async ({ connection, qr, lastDisconnect }) => {
+      if (qr) {
+        console.log("📲 Scan the QR Code (terminal):");
+        qrcode.generate(qr, { small: true });
+
+        try {
+          const qrLink = await QRCode.toDataURL(qr);
+          console.log("\n🌐 Open this QR in browser (scan from phone):");
+          console.log(qrLink);
+        } catch (err) {
+          console.error("Failed to generate QR code link:", err);
+        }
+      }
+
+      if (connection === "close") {
+        const shouldReconnect =
+          lastDisconnect?.error?.output?.statusCode !==
+          DisconnectReason.loggedOut;
+        console.log("Disconnected. Reconnecting...");
+        if (shouldReconnect) startSock();
+      } else if (connection === "open") {
+        console.log("✅ Connected to WhatsApp");
+      }
     }
-    if (connection === "close") {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !==
-        DisconnectReason.loggedOut;
-      console.log("Disconnected. Reconnecting...");
-      if (shouldReconnect) startSock();
-    } else if (connection === "open") {
-      console.log("✅ Connected to WhatsApp");
-    }
-  });
+  );
 
   sock.ev.on("creds.update", saveCreds);
 
@@ -97,7 +109,7 @@ async function startSock() {
     }
   });
 
-  // 🔄 Keep Render app alive every 15 min
+  // Keep Render app alive every 15 min
   cron.schedule("*/15 * * * *", async () => {
     try {
       await axios.get("https://pg-app-backend.onrender.com/ping");
@@ -114,17 +126,17 @@ async function startSock() {
       text: "📢 Good evening! Please submit your food order for tomorrow.",
     });
     console.log("✅ Sent 9 PM reminder to PG group");
+
+    // Start dynamic reminders loop
     dynamicReminder(sock);
   });
 
-  // 10 AM daily order summary
   // 10 AM daily order summary
   cron.schedule("00 10 * * *", async () => {
     try {
       const today = new Date();
       const dateString = today.toISOString().split("T")[0];
 
-      // ✅ Use detailed_summary
       const res = await axios.get(
         `https://pg-app-backend.onrender.com/detailed_summary?date=${dateString}`
       );
@@ -155,10 +167,9 @@ async function startSock() {
   });
 }
 
-// Dynamic reminders every 30 min, checking DB
-// Dynamic reminders every 30 min, checking DB
+// Dynamic reminders every 15 min, checking DB
 async function dynamicReminder(sock) {
-  const interval = 15 * 60 * 1000; // 15 minutes, change to 30*60*1000 for 30 min
+  const interval = 15 * 60 * 1000; // 15 minutes
 
   const checkReplies = async () => {
     try {
@@ -176,7 +187,6 @@ async function dynamicReminder(sock) {
       tomorrow.setDate(tomorrow.getDate() + 1);
       const dateString = tomorrow.toISOString().split("T")[0];
 
-      // ✅ Use new endpoint
       const res = await axios.get(
         `https://pg-app-backend.onrender.com/missing_orders?date=${dateString}`
       );
@@ -185,8 +195,7 @@ async function dynamicReminder(sock) {
       console.log(`Checked for missing orders. ${missing.length} pending.`);
 
       if (missing.length === 0) {
-        console.log("All members replied. Stopping reminders for today.");
-        // Optionally: you can skip next intervals too if no pending
+        console.log("All members replied. Waiting for next interval.");
         setTimeout(checkReplies, interval);
         return;
       }
@@ -204,7 +213,9 @@ async function dynamicReminder(sock) {
     setTimeout(checkReplies, interval);
   };
 
-  setTimeout(checkReplies, interval);
+  // Start the first check
+  setTimeout(checkReplies, 0);
 }
 
-startSock();
+// Start WhatsApp bot
+startSock().catch(console.error);
