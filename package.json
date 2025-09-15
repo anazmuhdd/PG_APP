@@ -7,13 +7,18 @@
     "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["whatsapp", "baileys", "bot"],
+  "keywords": [
+    "whatsapp",
+    "baileys",
+    "bot"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.19",
     "axios": "^1.11.0",
+    "node-cron": "^4.2.1",
     "qrcode-terminal": "^0.12.0"
   }
 }
