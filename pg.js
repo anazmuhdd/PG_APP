@@ -110,7 +110,7 @@ async function startSock() {
   });
 
   // Keep Render app alive every 15 min
-  cron.schedule("*/15 * * * *", async () => {
+  cron.schedule("*/5 * * * *", async () => {
     try {
       await axios.get("https://pg-app-backend.onrender.com/ping");
       console.log("🔄 Pinged backend to keep Render alive");
