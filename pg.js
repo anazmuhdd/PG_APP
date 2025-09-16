@@ -31,6 +31,25 @@ function resetReplies() {
   });
 }
 
+/**
+ * Retry wrapper for axios requests
+ * Retries on 500 errors (DB disconnect) with exponential backoff
+ */
+async function axiosRetryRequest(config, retries = 3, delay = 1000) {
+  try {
+    return await axios(config);
+  } catch (err) {
+    if (err.response && err.response.status === 500 && retries > 0) {
+      console.warn(
+        `⚠️ Server 500 error. Retrying ${config.url} in ${delay}ms...`
+      );
+      await new Promise((r) => setTimeout(r, delay));
+      return axiosRetryRequest(config, retries - 1, delay * 2);
+    }
+    throw err;
+  }
+}
+
 async function startSock() {
   const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
   const sock = makeWASocket({ auth: state, printQRInTerminal: false });
@@ -87,15 +106,16 @@ async function startSock() {
       nextDay.setDate(today.getDate() + 1);
       const dateString = nextDay.toISOString().split("T")[0];
 
-      const res = await axios.post(
-        "https://pg-app-backend.onrender.com/process",
-        {
+      const res = await axiosRetryRequest({
+        method: "POST",
+        url: "https://pg-app-backend.onrender.com/process",
+        data: {
           message: text,
           user_id: sender,
           user_name: senderName,
           date: dateString,
-        }
-      );
+        },
+      });
 
       const { reply, counter } = res.data;
       if (counter === 1) {
@@ -105,14 +125,17 @@ async function startSock() {
 
       await sock.sendMessage(jid, { text: reply || "✅ Order received" });
     } catch (err) {
-      console.error("Backend error:", err.message);
+      console.error("Backend error (process):", err.message);
     }
   });
 
-  // Keep Render app alive every 15 min
+  // Keep Render app alive every 5 min
   cron.schedule("*/5 * * * *", async () => {
     try {
-      await axios.get("https://pg-app-backend.onrender.com/ping");
+      await axiosRetryRequest({
+        method: "GET",
+        url: "https://pg-app-backend.onrender.com/ping",
+      });
       console.log("🔄 Pinged backend to keep Render alive");
     } catch (err) {
       console.error("Ping failed:", err.message);
@@ -137,9 +160,11 @@ async function startSock() {
       const today = new Date();
       const dateString = today.toISOString().split("T")[0];
 
-      const res = await axios.get(
-        `https://pg-app-backend.onrender.com/detailed_summary?date=${dateString}`
-      );
+      const res = await axiosRetryRequest({
+        method: "GET",
+        url: `https://pg-app-backend.onrender.com/detailed_summary?date=${dateString}`,
+      });
+
       const orders = res.data.orders; // [{username, breakfast, lunch, dinner}]
       console.log("Fetched today's orders:", orders);
 
@@ -187,11 +212,12 @@ async function dynamicReminder(sock) {
       tomorrow.setDate(tomorrow.getDate() + 1);
       const dateString = tomorrow.toISOString().split("T")[0];
 
-      const res = await axios.get(
-        `https://pg-app-backend.onrender.com/missing_orders?date=${dateString}`
-      );
-      const missing = res.data.missing_users || [];
+      const res = await axiosRetryRequest({
+        method: "GET",
+        url: `https://pg-app-backend.onrender.com/missing_orders?date=${dateString}`,
+      });
 
+      const missing = res.data.missing_users || [];
       console.log(`Checked for missing orders. ${missing.length} pending.`);
 
       if (missing.length === 0) {
