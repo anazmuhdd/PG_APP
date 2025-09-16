@@ -143,7 +143,7 @@ async function startSock() {
   });
 
   // 9 PM trigger message
-  cron.schedule("00 21 * * *", async () => {
+  cron.schedule("30 15 * * *", async () => {
     resetReplies();
     await sock.sendMessage(PG_GROUP_JID, {
       text: "📢 Good evening! Please submit your food order for tomorrow.",
@@ -155,7 +155,7 @@ async function startSock() {
   });
 
   // 10 AM daily order summary
-  cron.schedule("00 10 * * *", async () => {
+  cron.schedule("30 4 * * *", async () => {
     try {
       const today = new Date();
       const dateString = today.toISOString().split("T")[0];
@@ -194,23 +194,38 @@ async function startSock() {
 
 // Dynamic reminders every 15 min, checking DB
 async function dynamicReminder(sock) {
-  const interval = 15 * 60 * 1000; // 15 minutes
+  const interval = 1 * 60 * 1000; // 15 minutes
 
   const checkReplies = async () => {
     try {
       const now = new Date();
-      const currentHour = now.getHours();
+      const istHour = (utcHour + 5 + Math.floor((utcMinute + 30) / 60)) % 24;
+      console.log(`IST Hour: ${istHour}`);
+      const currentHour = istHour;
+      console.log(`Checking for missing orders at ${now.toLocaleTimeString()}`);
 
       // Skip reminders between 1 AM and 6 AM
       if (currentHour >= 1 && currentHour < 6) {
-        console.log("Sleeping hours (1 AM - 6 AM). Skipping reminders.");
+        console.log("😴 Sleeping hours (1 AM - 6 AM). Skipping reminders.");
         setTimeout(checkReplies, interval);
         return;
       }
 
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const dateString = tomorrow.toISOString().split("T")[0];
+      // Decide whether to check today's or tomorrow's orders
+      let targetDate = new Date();
+      if (currentHour >= 21) {
+        // After 9 PM → check tomorrow
+        targetDate.setDate(targetDate.getDate() + 1);
+        console.log("🌙 After 9 PM → Checking tomorrow's orders");
+      } else if (currentHour >= 6) {
+        // Between 6 AM and 9 PM → check today
+        console.log("🌞 Between 6 AM - 9 PM → Checking today's orders");
+      } else {
+        // Midnight - 1 AM edge case → still today
+        console.log("🌃 Midnight - 1 AM → Checking today's orders");
+      }
+
+      const dateString = targetDate.toISOString().split("T")[0];
 
       const res = await axiosRetryRequest({
         method: "GET",
@@ -218,10 +233,12 @@ async function dynamicReminder(sock) {
       });
 
       const missing = res.data.missing_users || [];
-      console.log(`Checked for missing orders. ${missing.length} pending.`);
+      console.log(
+        `Checked for missing orders (${dateString}). ${missing.length} pending.`
+      );
 
       if (missing.length === 0) {
-        console.log("All members replied. Waiting for next interval.");
+        console.log("✅ All members replied. Waiting for next interval.");
         setTimeout(checkReplies, interval);
         return;
       }
@@ -233,12 +250,12 @@ async function dynamicReminder(sock) {
         console.log(`⚠️ Reminder sent to ${m.username} (${m.whatsapp_id})`);
       }
     } catch (err) {
-      console.error("Dynamic reminder fetch failed:", err.message);
+      console.error("❌ Dynamic reminder fetch failed:", err.message);
     }
 
+    // Schedule next check
     setTimeout(checkReplies, interval);
   };
-
   // Start the first check
   setTimeout(checkReplies, 0);
 }
