@@ -194,7 +194,7 @@ async function startSock() {
 
 // Dynamic reminders every 15 min, checking DB
 async function dynamicReminder(sock) {
-  const interval = 1 * 60 * 1000; // 15 minutes
+  const interval = 30 * 60 * 1000; // 15 minutes
 
   const checkReplies = async () => {
     try {
