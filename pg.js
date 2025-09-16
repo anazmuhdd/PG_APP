@@ -143,7 +143,7 @@ async function startSock() {
   });
 
   // 9 PM trigger message
-  cron.schedule("30 15 * * *", async () => {
+  cron.schedule("40 15 * * *", async () => {
     resetReplies();
     await sock.sendMessage(PG_GROUP_JID, {
       text: "📢 Good evening! Please submit your food order for tomorrow.",
