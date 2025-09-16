@@ -199,6 +199,8 @@ async function dynamicReminder(sock) {
   const checkReplies = async () => {
     try {
       const now = new Date();
+      const utcHour = now.getUTCHours();
+      const utcMinute = now.getUTCMinutes();
       const istHour = (utcHour + 5 + Math.floor((utcMinute + 30) / 60)) % 24;
       console.log(`IST Hour: ${istHour}`);
       const currentHour = istHour;
