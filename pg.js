@@ -9,7 +9,7 @@ const QRCode = require("qrcode");
 const cron = require("node-cron");
 
 const PG_GROUP_JID = "120363404470997481@g.us";
-
+const cateringServiceJID = "919847413782@s.whatsapp.net";
 const PG_MEMBERS = [
   { id: "919074211782@s.whatsapp.net", name: "Akash" },
   { id: "919645829304@s.whatsapp.net", name: "Akhinesh" },
@@ -21,20 +21,6 @@ const PG_MEMBERS = [
   { id: "919207605231@s.whatsapp.net", name: "Nikhil" },
 ];
 
-// Track who has submitted orders
-let todaysReplies = {};
-
-function resetReplies() {
-  todaysReplies = {};
-  PG_MEMBERS.forEach((member) => {
-    todaysReplies[member.id] = false;
-  });
-}
-
-/**
- * Retry wrapper for axios requests
- * Retries on 500 errors (DB disconnect) with exponential backoff
- */
 async function axiosRetryRequest(config, retries = 3, delay = 1000) {
   try {
     return await axios(config);
@@ -102,9 +88,7 @@ async function startSock() {
 
     try {
       const today = new Date();
-      const nextDay = new Date(today);
-      nextDay.setDate(today.getDate() + 1);
-      const dateString = nextDay.toISOString().split("T")[0];
+      const dateString = today.toISOString().split("T")[0];
 
       const res = await axiosRetryRequest({
         method: "POST",
@@ -113,7 +97,6 @@ async function startSock() {
           message: text,
           user_id: sender,
           user_name: senderName,
-          date: dateString,
         },
       });
 
@@ -143,17 +126,146 @@ async function startSock() {
   });
 
   // 9 PM trigger message
-  cron.schedule("40 15 * * *", async () => {
+  cron.schedule("00 14 * * *", async () => {
     resetReplies();
     await sock.sendMessage(PG_GROUP_JID, {
-      text: "📢 Good evening! Please submit your food order for tomorrow.",
+      text: "📢 Good evening! Please submit your food order for tomorrow.\n\nFor breakfast please order before 9PM",
     });
-    console.log("✅ Sent 9 PM reminder to PG group");
-
+    console.log("✅ Sent 7:30 PM reminder to PG group");
     // Start dynamic reminders loop
     dynamicReminder(sock);
   });
+  cron.schedule("00 14 * * *", async () => {
+    const now = new Date();
+    const indiaOffsetMs = 5.5 * 60 * 60 * 1000; // IST offset in milliseconds
+    const indiaNow = new Date(now.getTime() + indiaOffsetMs);
+    indiaNow.setDate(indiaNow.getDate() + 1);
+    const indiaTomorrow = indiaNow.toISOString().split("T")[0];
+    console.log("indiaTomorrow:", indiaTomorrow);
+    try {
+      const res = await axiosRetryRequest({
+        method: "GET",
+        url: `https://pg-app-backend.onrender.com/detailed_summary?date=${indiaTomorrow}`,
+      });
+      console.log(res.data);
+      const orders = res.data.orders;
+      if (!orders || orders.length === 0 || res.data.total_orders === 0) {
+        return;
+      }
+      // Filter breakfast orders
+      const breakfastOrders = orders.filter((order) => order.breakfast);
+      const breakfastCount = breakfastOrders.length;
+      const breakfastNames = breakfastOrders.map((order) => order.username);
 
+      // Prepare messages
+      const breakfastSummaryMsg = `🍳 *Breakfast Orders for Tomorrow*\n\n${
+        breakfastNames.length > 0
+          ? breakfastNames.map((name, i) => `${i + 1}. ${name}`).join("\n")
+          : "No orders yet."
+      }\n\nNo more orders can be placed for breakfast now.`;
+      const breakfastCountMsg = `🔢 *Total Breakfast Orders*: ${breakfastCount}`;
+      const malayalamMsg = `ചേച്ചി, \n\nനാളെ (${indiaTomorrow}),\n${breakfastCount} പേർക്ക് ബ്രേക്ക്‌ഫാസ്റ്റ് വേണം.`;
+
+      // Only send to catering service if there are orders
+      if (breakfastCount > 0) {
+        await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
+      }
+      await sock.sendMessage(PG_GROUP_JID, { text: breakfastSummaryMsg });
+      console.log(breakfastSummaryMsg);
+      console.log(breakfastCountMsg);
+      console.log("✅ Sent breakfast summary to group and catering service");
+    } catch (err) {
+      console.error(err);
+    }
+  });
+
+  cron.schedule("00 01 * * *", async () => {
+    const now = new Date();
+    const indiaOffsetMs = 5.5 * 60 * 60 * 1000; // IST offset in milliseconds
+    const indiaNow = new Date(now.getTime() + indiaOffsetMs);
+    indiaNow.setDate(indiaNow.getDate());
+    const indiaTomorrow = indiaNow.toISOString().split("T")[0];
+    console.log("indiaTomorrow:", indiaTomorrow);
+    try {
+      const res = await axiosRetryRequest({
+        method: "GET",
+        url: `https://pg-app-backend.onrender.com/detailed_summary?date=${indiaTomorrow}`,
+      });
+      console.log(res.data);
+      const orders = res.data.orders;
+      if (!orders || orders.length === 0 || res.data.total_orders === 0) {
+        return;
+      }
+      // Filter lunch orders
+      const lunchOrders = orders.filter((order) => order.lunch);
+      const lunchCount = lunchOrders.length;
+      const lunchNames = lunchOrders.map((order) => order.username);
+
+      // Prepare messages
+      const lunchSummaryMsg = `🍛 *Lunch Orders for Tomorrow*\n\n${
+        lunchNames.length > 0
+          ? lunchNames.map((name, i) => `${i + 1}. ${name}`).join("\n")
+          : "No orders yet."
+      }\n\nNo more orders can be placed for lunch now.`;
+      const lunchCountMsg = `🔢 *Total Lunch Orders*: ${lunchCount}`;
+      const malayalamMsg = `ചേച്ചി, \n\nഇന്ന് (${indiaTomorrow}),\n${lunchCount} പേർക്ക് ഊണ് വേണം.`;
+
+      // Only send to catering service if there are orders
+      if (lunchCount > 0) {
+        await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
+      }
+      await sock.sendMessage(PG_GROUP_JID, { text: lunchSummaryMsg });
+      console.log(lunchSummaryMsg);
+      console.log(lunchCountMsg);
+      console.log("✅ Sent lunch summary to group and catering service");
+    } catch (err) {
+      console.error(err);
+    }
+  });
+
+  cron.schedule("00 07 * * *", async () => {
+    const now = new Date();
+    const indiaOffsetMs = 5.5 * 60 * 60 * 1000; // IST offset in milliseconds
+    const indiaNow = new Date(now.getTime() + indiaOffsetMs);
+    indiaNow.setDate(indiaNow.getDate());
+    const indiaTomorrow = indiaNow.toISOString().split("T")[0];
+    console.log("indiaTomorrow:", indiaTomorrow);
+    try {
+      const res = await axiosRetryRequest({
+        method: "GET",
+        url: `https://pg-app-backend.onrender.com/detailed_summary?date=${indiaTomorrow}`,
+      });
+      console.log(res.data);
+      const orders = res.data.orders;
+      if (!orders || orders.length === 0 || res.data.total_orders === 0) {
+        return;
+      }
+      // Filter dinner orders
+      const dinnerOrders = orders.filter((order) => order.dinner);
+      const dinnerCount = dinnerOrders.length;
+      const dinnerNames = dinnerOrders.map((order) => order.username);
+
+      // Prepare messages
+      const dinnerSummaryMsg = `🍽️ *Dinner Orders for Tomorrow*\n\n${
+        dinnerNames.length > 0
+          ? dinnerNames.map((name, i) => `${i + 1}. ${name}`).join("\n")
+          : "No orders yet."
+      }\n\nNo more orders can be placed for dinner now.`;
+      const dinnerCountMsg = `🔢 *Total Dinner Orders*: ${dinnerCount}`;
+      const malayalamMsg = `ചേച്ചി, \n\nഇന്ന് (${indiaTomorrow}),\n${dinnerCount} പേർക്ക് രാത്രി ഭക്ഷണം വേണം.`;
+
+      // Only send to catering service if there are orders
+      if (dinnerCount > 0) {
+        await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
+      }
+      await sock.sendMessage(PG_GROUP_JID, { text: dinnerSummaryMsg });
+      console.log(dinnerSummaryMsg);
+      console.log(dinnerCountMsg);
+      console.log("✅ Sent dinner summary to group and catering service");
+    } catch (err) {
+      console.error(err);
+    }
+  });
   // 10 AM daily order summary
   cron.schedule("30 4 * * *", async () => {
     try {
@@ -191,10 +303,9 @@ async function startSock() {
     }
   });
 }
-
-// Dynamic reminders every 15 min, checking DB
+// Dynamic reminders every 60 min, checking DB
 async function dynamicReminder(sock) {
-  const interval = 30 * 60 * 1000; // 15 minutes
+  const interval = 60 * 60 * 1000; // 60 minutes
 
   const checkReplies = async () => {
     try {
@@ -215,16 +326,19 @@ async function dynamicReminder(sock) {
 
       // Decide whether to check today's or tomorrow's orders
       let targetDate = new Date();
-      if (currentHour >= 21) {
-        // After 9 PM → check tomorrow
+      let day = "today";
+      if (currentHour >= 20) {
+        // After 8 PM → check tomorrow
         targetDate.setDate(targetDate.getDate() + 1);
-        console.log("🌙 After 9 PM → Checking tomorrow's orders");
-      } else if (currentHour >= 6) {
-        // Between 6 AM and 9 PM → check today
-        console.log("🌞 Between 6 AM - 9 PM → Checking today's orders");
+        console.log("🌙 After 8 PM → Checking tomorrow's orders");
+        day = "tomorrow";
+      } else if (currentHour >= 6 && currentHour < 13) {
+        // Between 6 AM and 1 PM → check today
+        console.log("🌞 Between 6 AM - 1 PM → Checking today's orders");
+        let day;
       } else {
         // Midnight - 1 AM edge case → still today
-        console.log("🌃 Midnight - 1 AM → Checking today's orders");
+        return;
       }
 
       const dateString = targetDate.toISOString().split("T")[0];
@@ -244,13 +358,11 @@ async function dynamicReminder(sock) {
         setTimeout(checkReplies, interval);
         return;
       }
-
-      for (let m of missing) {
-        await sock.sendMessage(m.whatsapp_id, {
-          text: `⚠️ ${m.username}, you haven't submitted your food order yet. Please reply in the PG group.`,
-        });
-        console.log(`⚠️ Reminder sent to ${m.username} (${m.whatsapp_id})`);
-      }
+      const member_list_string = missing.map((m) => m.username).join("\n");
+      await sock.sendMessage(PG_GROUP_JID, {
+        text: `⚠️ The following members have not yet submitted their food orders for *${day}*:\n\n${member_list_string}\n\nPlease submit your order ASAP!`,
+      });
+      console.log(`⚠️ Reminder sent to group for ${day} orders.`);
     } catch (err) {
       console.error("❌ Dynamic reminder fetch failed:", err.message);
     }
