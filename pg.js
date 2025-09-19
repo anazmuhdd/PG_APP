@@ -102,7 +102,6 @@ async function startSock() {
 
       const { reply, counter } = res.data;
       if (counter === 1) {
-        todaysReplies[sender] = true;
         console.log(`✅ ${senderName} has submitted their order.`);
       }
 
@@ -202,7 +201,7 @@ async function startSock() {
       const lunchNames = lunchOrders.map((order) => order.username);
 
       // Prepare messages
-      const lunchSummaryMsg = `🍛 *Lunch Orders for Tomorrow*\n\n${
+      const lunchSummaryMsg = `🍛 *Lunch Orders for Today*\n\n${
         lunchNames.length > 0
           ? lunchNames.map((name, i) => `${i + 1}. ${name}`).join("\n")
           : "No orders yet."
@@ -246,7 +245,7 @@ async function startSock() {
       const dinnerNames = dinnerOrders.map((order) => order.username);
 
       // Prepare messages
-      const dinnerSummaryMsg = `🍽️ *Dinner Orders for Tomorrow*\n\n${
+      const dinnerSummaryMsg = `🍽️ *Dinner Orders for Today*\n\n${
         dinnerNames.length > 0
           ? dinnerNames.map((name, i) => `${i + 1}. ${name}`).join("\n")
           : "No orders yet."
