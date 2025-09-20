@@ -88,7 +88,9 @@ async function startSock() {
 
     try {
       const today = new Date();
-      const dateString = today.toISOString().split("T")[0];
+      const indiaOffsetMs = 5.5 * 60 * 60 * 1000; // IST offset in milliseconds
+      const indiaNow = new Date(today.getTime() + indiaOffsetMs);
+      const dateString = indiaNow.toISOString().split("T")[0];
 
       const res = await axiosRetryRequest({
         method: "POST",
@@ -126,7 +128,6 @@ async function startSock() {
 
   // 9 PM trigger message
   cron.schedule("00 14 * * *", async () => {
-    resetReplies();
     await sock.sendMessage(PG_GROUP_JID, {
       text: "📢 Good evening! Please submit your food order for tomorrow.\n\nFor breakfast please order before 9PM",
     });
@@ -134,7 +135,7 @@ async function startSock() {
     // Start dynamic reminders loop
     dynamicReminder(sock);
   });
-  cron.schedule("00 14 * * *", async () => {
+  cron.schedule("00 16 * * *", async () => {
     const now = new Date();
     const indiaOffsetMs = 5.5 * 60 * 60 * 1000; // IST offset in milliseconds
     const indiaNow = new Date(now.getTime() + indiaOffsetMs);
@@ -228,7 +229,6 @@ async function startSock() {
     const indiaNow = new Date(now.getTime() + indiaOffsetMs);
     indiaNow.setDate(indiaNow.getDate());
     const indiaTomorrow = indiaNow.toISOString().split("T")[0];
-    console.log("indiaTomorrow:", indiaTomorrow);
     try {
       const res = await axiosRetryRequest({
         method: "GET",
@@ -265,11 +265,13 @@ async function startSock() {
       console.error(err);
     }
   });
-  // 10 AM daily order summary
+  // This cron runs at 4:30 UTC, which is 10:00 AM IST (India Standard Time)
   cron.schedule("30 4 * * *", async () => {
     try {
       const today = new Date();
-      const dateString = today.toISOString().split("T")[0];
+      const indiaOffsetMs = 5.5 * 60 * 60 * 1000; // IST offset in milliseconds
+      const indiaNow = new Date(today.getTime() + indiaOffsetMs);
+      const dateString = indiaNow.toISOString().split("T")[0];
 
       const res = await axiosRetryRequest({
         method: "GET",
@@ -279,24 +281,24 @@ async function startSock() {
       const orders = res.data.orders; // [{username, breakfast, lunch, dinner}]
       console.log("Fetched today's orders:", orders);
 
-      if (!orders || orders.length === 0) {
+      if (res.data.total_orders === 0) {
         await sock.sendMessage(PG_GROUP_JID, {
           text: "📊 No orders found for today yet.",
         });
         return;
-      }
+      } else {
+        let summary = "📊 *Today's Orders Summary*:\n\n";
+        for (const o of orders) {
+          let meals = [];
+          if (o.breakfast) meals.push("🍳 Breakfast");
+          if (o.lunch) meals.push("🍛 Lunch");
+          if (o.dinner) meals.push("🍽️ Dinner");
+          summary += `✅ ${o.username}: ${meals.join(", ") || "No meals"}\n`;
+        }
 
-      let summary = "📊 *Today's Orders Summary*:\n\n";
-      for (const o of orders) {
-        let meals = [];
-        if (o.breakfast) meals.push("🍳 Breakfast");
-        if (o.lunch) meals.push("🍛 Lunch");
-        if (o.dinner) meals.push("🍽️ Dinner");
-        summary += `✅ ${o.username}: ${meals.join(", ") || "No meals"}\n`;
+        await sock.sendMessage(PG_GROUP_JID, { text: summary });
+        console.log("✅ Sent 10 AM summary to group");
       }
-
-      await sock.sendMessage(PG_GROUP_JID, { text: summary });
-      console.log("✅ Sent 10 AM summary to group");
     } catch (err) {
       console.error("Summary fetch failed:", err.message);
     }

@@ -2,41 +2,51 @@ const axios = require("axios");
 const qrcode = require("qrcode-terminal");
 const QRCode = require("qrcode");
 const cron = require("node-cron");
-// This code does NOT correctly get tomorrow's date in India time.
-// It uses UTC date, but the logic is incorrect and will not work as intended.
-const now = new Date();
-const indiaOffsetMs = 5.5 * 60 * 60 * 1000; // IST offset in milliseconds
-const indiaNow = new Date(now.getTime() + indiaOffsetMs);
-indiaNow.setDate(indiaNow.getDate());
-const indiaTomorrow = indiaNow.toISOString().split("T")[0];
-console.log(indiaTomorrow);
-try {
-  const res = axios
-    .get(
-      `https://pg-app-backend.onrender.com/detailed_summary?date=${indiaTomorrow}`
-    )
-    .then((res) => {
-      console.log(res.data);
-      const orders = res.data.orders;
-      if (!orders || orders.length === 0) {
-        return;
-      }
-      // Filter breakfast orders
-      const breakfastOrders = orders.filter((order) => order.breakfast);
-      const breakfastCount = breakfastOrders.length;
-      const breakfastNames = breakfastOrders.map((order) => order.username);
-
-      // Prepare messages
-      const breakfastSummaryMsg = `Breakfast Orders placed tomorrow for: \n\n ${breakfastNames.join(
-        "\n"
-      )}`;
-      const breakfastCountMsg = `Breakfast count: ${breakfastCount}`;
-
-      console.log(breakfastSummaryMsg);
-      console.log(breakfastCountMsg);
-
-      // You can send these messages to your bot here
-    });
-} catch (err) {
-  console.error(err);
+async function axiosRetryRequest(config, retries = 3, delay = 1000) {
+  try {
+    return await axios(config);
+  } catch (err) {
+    if (err.response && err.response.status === 500 && retries > 0) {
+      console.warn(
+        `⚠️ Server 500 error. Retrying ${config.url} in ${delay}ms...`
+      );
+      await new Promise((r) => setTimeout(r, delay));
+      return axiosRetryRequest(config, retries - 1, delay * 2);
+    }
+    throw err;
+  }
 }
+(async () => {
+  try {
+    const dateString = "2025-09-18"; // Change to desired date for testing
+
+    console.log("Fetching summary for date:", dateString);
+
+    const res = await axiosRetryRequest({
+      method: "GET",
+      url: `https://pg-app-backend.onrender.com/detailed_summary?date=${dateString}`,
+    });
+
+    const orders = res.data.orders;
+    console.log("Fetched today's orders:", orders);
+
+    if (res.data.total_orders === 0) {
+      console.log("📊 No orders found for today yet.");
+      return;
+    }
+
+    let summary = "📊 *Today's Orders Summary*:\n\n";
+    for (const o of orders) {
+      let meals = [];
+      if (o.breakfast) meals.push("🍳 Breakfast");
+      if (o.lunch) meals.push("🍛 Lunch");
+      if (o.dinner) meals.push("🍽️ Dinner");
+      summary += `✅ ${o.username}: ${meals.join(", ") || "No meals"}\n`;
+    }
+
+    console.log(summary);
+    console.log("✅ Sent 10 AM summary to group (simulated)");
+  } catch (err) {
+    console.error("Summary fetch failed:", err.message);
+  }
+})();
