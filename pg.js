@@ -290,7 +290,7 @@ async function startSock() {
 
 // Dynamic reminders loop
 async function dynamicReminder(sock) {
-  const interval = 60 * 60 * 1000; // 60 minutes
+  const interval = 120 * 60 * 1000; // 120 minutes
 
   const checkReplies = async () => {
     try {
