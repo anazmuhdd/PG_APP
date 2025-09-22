@@ -41,26 +41,22 @@ async function axiosRetryRequest(config, retries = 3, delay = 1000) {
 // Start WhatsApp socket
 async function startSock() {
   const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
+
+  // ✅ Socket config: NO HISTORY, NO SYNC, NO BUFFERING
   const sock = makeWASocket({
     auth: state,
     printQRInTerminal: false,
-    syncFullHistory: false,
-    markOnlineOnConnect: false,
-    browser: Browsers.appropriate('Chrome'),
+    syncFullHistory: false,              // ← Don't request full history
+    waitForChats: false,                 // ← Don't wait for initial sync
+    markOnlineOnConnect: false,          // ← Stay invisible
+    browser: Browsers.baileys('PG Bot'), // ← Headless mode
+    keepAliveIntervalMs: 30_000,         // ← Stay connected
     connectTimeoutMs: 60_000,
-    keepAliveIntervalMs: 30_000,
-    // 👇 CRITICAL: Reject ALL history sync attempts (blocks "got history notification")
-  shouldSyncHistoryMessage: () => false,
 
-  // Optional: Reduce log noise (if you want)
-  logger: {
-    info: () => {},   // comment this out if you want to keep info logs
-    warn: console.warn,
-    error: console.error,
-    debug: () => {},  // suppress debug logs like "got history notification"
-  }
+    // 👇 BLOCK ALL HISTORY SYNC MESSAGES — disable at protocol level
+    shouldSyncHistoryMessage: () => false,
+    // ← REMOVED logger object to avoid .child() error
   });
-  
 
   // QR & Connection
   sock.ev.on(
@@ -84,7 +80,11 @@ async function startSock() {
           lastDisconnect?.error?.output?.statusCode !==
           DisconnectReason.loggedOut;
         console.log("Disconnected. Reconnecting...");
-        if (shouldReconnect) startSock();
+        if (shouldReconnect) {
+          setTimeout(() => startSock(), 3000); // ← Safer reconnect
+        } else {
+          console.log("Session expired. Delete auth_info_baileys and restart.");
+        }
       } else if (connection === "open") {
         console.log("✅ Connected to WhatsApp");
       }
@@ -95,7 +95,7 @@ async function startSock() {
 
   // Handle PG group messages
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== "notify") return;
+    if (type !== "notify") return; // ← Only real-time new messages
     const msg = messages[0];
     const jid = msg.key.remoteJid;
     if (jid !== PG_GROUP_JID || !msg.message || msg.key.fromMe) return;
