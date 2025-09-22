@@ -2,6 +2,7 @@ const {
   useMultiFileAuthState,
   makeWASocket,
   DisconnectReason,
+  Browsers,
 } = require("@whiskeysockets/baileys");
 const axios = require("axios");
 const qrcode = require("qrcode-terminal");
@@ -40,7 +41,14 @@ async function axiosRetryRequest(config, retries = 3, delay = 1000) {
 // Start WhatsApp socket
 async function startSock() {
   const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
-  const sock = makeWASocket({ auth: state, printQRInTerminal: false });
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: false,
+    syncFullHistory: false,
+    markOnlineOnConnect: false,
+    browser: Browsers.windows("WhatsApp Bot"),
+    shouldSyncHistoryMessages: false,
+  });
 
   // QR & Connection
   sock.ev.on(
@@ -338,16 +346,24 @@ async function dynamicReminder(sock) {
       );
 
       if (missing.length === 0) {
-        console.log("✅ All members replied. Waiting for next interval.");
-        setTimeout(checkReplies, interval);
+        await sock.sendMessage(PG_GROUP_JID, {
+          text: `✅ All members have already submitted their food orders for *${day}*!`,
+        });
         return;
       }
 
-      const member_list_string = missing.map((m) => m.username).join("\n");
+      // Build mentions
+      const mentions = missing.map((m) => m.whatsapp_id);
+      const memberListString = missing
+        .map(
+          (m, i) => `${i + 1}. @${m.whatsapp_id.split("@")[0]} (${m.username})`
+        )
+        .join("\n");
+
       await sock.sendMessage(PG_GROUP_JID, {
-        text: `⚠️ The following members have not yet submitted their food orders for *${day}*:\n\n${member_list_string}\n\nPlease submit your order ASAP!`,
+        text: `⚠️ The following members have not yet submitted their food orders for *${day}*:\n\n${memberListString}\n\nPlease submit your order ASAP!`,
+        mentions: mentions,
       });
-      console.log(`⚠️ Reminder sent to group for ${day} orders.`);
     } catch (err) {
       console.error("❌ Dynamic reminder fetch failed:", err.message);
     }

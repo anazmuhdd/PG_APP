@@ -1,4 +1,16 @@
+const {
+  useMultiFileAuthState,
+  makeWASocket,
+  DisconnectReason,
+  Browsers,
+} = require("@whiskeysockets/baileys");
 const axios = require("axios");
+const qrcode = require("qrcode-terminal");
+const QRCode = require("qrcode");
+
+const PG_GROUP_JID = "120363404470997481@g.us";
+
+// Retry wrapper
 async function axiosRetryRequest(config, retries = 3, delay = 1000) {
   try {
     return await axios(config);
@@ -14,69 +26,91 @@ async function axiosRetryRequest(config, retries = 3, delay = 1000) {
   }
 }
 
-async function checkReplies() {
-  try {
-    const interval = 10000; // 10 seconds for demo
-    const now = new Date();
-    const utcHour = now.getUTCHours();
-    const utcMinute = now.getUTCMinutes();
-    const istHour = (utcHour + 5 + Math.floor((utcMinute + 30) / 60)) % 24;
-    console.log(`IST Hour: ${istHour}`);
-    console.log(`Checking for missing orders at ${now.toLocaleTimeString()}`);
+async function startSock() {
+  const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: false,
+    syncFullHistory: false,
+    markOnlineOnConnect: false,
+    browser: Browsers.windows("WhatsApp Bot"),
+    shouldSyncHistoryMessages: false,
+  });
 
-    // Skip reminders between 1 AM and 6 AM
-    if (istHour >= 1 && istHour < 6) {
-      console.log("😴 Sleeping hours (1 AM - 6 AM). Skipping reminders.");
-      setTimeout(checkReplies, interval);
-      return;
+  // QR & connection
+  sock.ev.on(
+    "connection.update",
+    async ({ connection, qr, lastDisconnect }) => {
+      if (qr) {
+        console.log("📲 Scan the QR Code (terminal):");
+        qrcode.generate(qr, { small: true });
+
+        try {
+          const qrLink = await QRCode.toDataURL(qr);
+          console.log("\n🌐 Open this QR in browser (scan from phone):");
+          console.log(qrLink);
+        } catch (err) {
+          console.error("Failed to generate QR code link:", err);
+        }
+      }
+
+      if (connection === "close") {
+        const shouldReconnect =
+          lastDisconnect?.error?.output?.statusCode !==
+          DisconnectReason.loggedOut;
+        console.log("❌ Disconnected. Reconnecting...");
+        if (shouldReconnect) startSock();
+      } else if (connection === "open") {
+        console.log("✅ Connected to WhatsApp");
+
+        // ---- TEST CODE: Fetch missing orders + send mentions ----
+        try {
+          const today = new Date();
+          const dateString = "2025-09-23";
+          const day = today.toLocaleDateString("en-US", { weekday: "long" });
+
+          const res = await axiosRetryRequest({
+            method: "GET",
+            url: `https://pg-app-backend.onrender.com/missing_orders?date=${dateString}`,
+          });
+
+          const missing = res.data.missing_users || [];
+          console.log(
+            `Checked for missing orders (${dateString}). ${missing.length} pending.`
+          );
+
+          if (missing.length === 0) {
+            await sock.sendMessage(PG_GROUP_JID, {
+              text: `✅ All members have already submitted their food orders for *${day}*!`,
+            });
+            return;
+          }
+
+          // Build mentions
+          const mentions = missing.map((m) => m.whatsapp_id);
+          const memberListString = missing
+            .map(
+              (m, i) =>
+                `${i + 1}. @${m.whatsapp_id.split("@")[0]} (${m.username})`
+            )
+            .join("\n");
+
+          await sock.sendMessage(PG_GROUP_JID, {
+            text: `⚠️ The following members have not yet submitted their food orders for *${day}*:\n\n${memberListString}\n\nPlease submit your order ASAP!`,
+            mentions: mentions,
+          });
+
+          console.log(
+            `⚠️ Reminder sent to group for ${day} orders with mentions.`
+          );
+        } catch (err) {
+          console.error("❌ Backend fetch/send failed:", err.message);
+        }
+      }
     }
+  );
 
-    // Decide whether to check today's or tomorrow's orders
-    let targetDate = new Date();
-    let day = "today";
-    if (istHour >= 20 && istHour <= 1) {
-      targetDate.setDate(targetDate.getDate() + 1);
-      console.log("🌙 After 8 PM → Checking tomorrow's orders");
-      day = "tomorrow";
-    } else if (istHour >= 6 && istHour < 13) {
-      console.log("🌞 Between 6 AM - 1 PM → Checking today's orders");
-      day = "today";
-    } else {
-      console.log("🕛 Midnight - 1 AM edge case. Skipping.");
-      setTimeout(checkReplies, interval);
-      return;
-    }
-
-    const dateString = targetDate.toISOString().split("T")[0];
-
-    const res = await axiosRetryRequest({
-      method: "GET",
-      url: `https://pg-app-backend.onrender.com/missing_orders?date=${dateString}`,
-    });
-
-    const missing = res.data.missing_users || [];
-    console.log(
-      `Checked for missing orders (${dateString}). ${missing.length} pending.`
-    );
-
-    if (missing.length === 0) {
-      console.log("✅ All members replied. Waiting for next interval.");
-      setTimeout(checkReplies, interval);
-      return;
-    }
-
-    const member_list_string = missing.map((m) => m.username).join("\n");
-    console.log(
-      `⚠️ The following members have not yet submitted their food orders for *${day}*:\n\n${member_list_string}\n\nPlease submit your order ASAP!`
-    );
-
-    // keep checking again after interval
-    setTimeout(checkReplies, interval);
-  } catch (err) {
-    console.error("❌ Dynamic reminder fetch failed:", err.message);
-    setTimeout(checkReplies, 10000); // retry anyway
-  }
+  sock.ev.on("creds.update", saveCreds);
 }
 
-// Start loop
-checkReplies();
+startSock();
