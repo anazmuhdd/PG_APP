@@ -46,7 +46,7 @@ async function startSock() {
     printQRInTerminal: false,
     syncFullHistory: false,
     markOnlineOnConnect: false,
-    browser: Browsers.windows("WhatsApp Bot"),
+    browser: Browsers.baileys("WhatsApp Bot"),
     shouldSyncHistoryMessages: false,
   });
 
