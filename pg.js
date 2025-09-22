@@ -49,7 +49,18 @@ async function startSock() {
     browser: Browsers.appropriate('Chrome'),
     connectTimeoutMs: 60_000,
     keepAliveIntervalMs: 30_000,
+    // 👇 CRITICAL: Reject ALL history sync attempts (blocks "got history notification")
+  shouldSyncHistoryMessage: () => false,
+
+  // Optional: Reduce log noise (if you want)
+  logger: {
+    info: () => {},   // comment this out if you want to keep info logs
+    warn: console.warn,
+    error: console.error,
+    debug: () => {},  // suppress debug logs like "got history notification"
+  }
   });
+  
 
   // QR & Connection
   sock.ev.on(
