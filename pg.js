@@ -46,8 +46,7 @@ async function startSock() {
     printQRInTerminal: false,
     syncFullHistory: false,
     markOnlineOnConnect: false,
-    browser: Browsers.macOS('Desktop'), // 👈 THIS IS KEY FOR NOTIFICATIONS
-
+    browser: ["Chrome", "Desktop", "10.15.7"],
     connectTimeoutMs: 60_000,
     keepAliveIntervalMs: 30_000,
   });
