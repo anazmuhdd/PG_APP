@@ -46,8 +46,10 @@ async function startSock() {
     printQRInTerminal: false,
     syncFullHistory: false,
     markOnlineOnConnect: false,
-    browser: Browsers.baileys("WhatsApp Bot"),
-    shouldSyncHistoryMessages: false,
+    browser: Browsers.macOS('Desktop'), // 👈 THIS IS KEY FOR NOTIFICATIONS
+
+    connectTimeoutMs: 60_000,
+    keepAliveIntervalMs: 30_000,
   });
 
   // QR & Connection
