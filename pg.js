@@ -49,7 +49,7 @@ async function startSock() {
     syncFullHistory: false,
     waitForChats: false,
     markOnlineOnConnect: false,
-    browser: Browsers.baileys('PG Bot'),
+    browser: Browsers.appropriate("Chrome"),
     keepAliveIntervalMs: 30_000,
     connectTimeoutMs: 60_000,
     syncAppState: false,
