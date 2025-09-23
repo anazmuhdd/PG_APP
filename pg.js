@@ -52,6 +52,8 @@ async function startSock() {
     browser: Browsers.baileys('PG Bot'), // ← Headless mode
     keepAliveIntervalMs: 30_000,         // ← Stay connected
     connectTimeoutMs: 60_000,
+    syncAppState: false,               // ← Don't sync app state
+    getMessage: async () => null,      // ← Disable message buffering
 
     // 👇 BLOCK ALL HISTORY SYNC MESSAGES — disable at protocol level
     shouldSyncHistoryMessage: () => false,
