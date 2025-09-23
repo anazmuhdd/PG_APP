@@ -46,18 +46,20 @@ async function startSock() {
   const sock = makeWASocket({
     auth: state,
     printQRInTerminal: false,
-    syncFullHistory: false,              // ← Don't request full history
-    waitForChats: false,                 // ← Don't wait for initial sync
-    markOnlineOnConnect: false,          // ← Stay invisible
-    browser: Browsers.baileys('PG Bot'), // ← Headless mode
-    keepAliveIntervalMs: 30_000,         // ← Stay connected
+    syncFullHistory: false,
+    waitForChats: false,
+    markOnlineOnConnect: false,
+    browser: Browsers.baileys('PG Bot'),
+    keepAliveIntervalMs: 30_000,
     connectTimeoutMs: 60_000,
-    syncAppState: false,               // ← Don't sync app state
-    getMessage: async () => null,      // ← Disable message buffering
-
-    // 👇 BLOCK ALL HISTORY SYNC MESSAGES — disable at protocol level
+    syncAppState: false,
+    getMessage: async () => null,
     shouldSyncHistoryMessage: () => false,
-    // ← REMOVED logger object to avoid .child() error
+    downloadHistory: false,             
+    syncContacts: false,                
+    emitOwnEvents: false,              
+    fireInitQueries: false,             
+    transactionOpts: { maxCommitRetries: 1, maxUncommittedTransactions: 1 }
   });
 
   // QR & Connection
