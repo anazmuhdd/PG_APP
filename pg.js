@@ -1,13 +1,13 @@
-const {
+import {
   useMultiFileAuthState,
   makeWASocket,
   DisconnectReason,
   Browsers,
-} = require("@whiskeysockets/baileys");
-const axios = require("axios");
-const qrcode = require("qrcode-terminal");
-const QRCode = require("qrcode");
-const cron = require("node-cron");
+} from "@whiskeysockets/baileys";
+import axios from "axios";
+import qrcode from "qrcode-terminal";
+import * as QRCode from "qrcode";
+import * as cron from "node-cron";
 
 const PG_GROUP_JID = "120363404470997481@g.us";
 const cateringServiceJID = "919847413782@s.whatsapp.net";
