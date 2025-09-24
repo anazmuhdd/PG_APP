@@ -5,10 +5,9 @@ const {
   Browsers,
 } = require("@whiskeysockets/baileys");
 const axios = require("axios");
-const qrcode = require("qrcode-terminal");
-const QRCode = require("qrcode");
 const cron = require("node-cron");
 
+// ===== CONFIG =====
 const PG_GROUP_JID = "120363404470997481@g.us";
 const cateringServiceJID = "919847413782@s.whatsapp.net";
 const PG_MEMBERS = [
@@ -22,15 +21,16 @@ const PG_MEMBERS = [
   { id: "919207605231@s.whatsapp.net", name: "Nikhil" },
 ];
 
-// Retry wrapper for axios
+// Your WhatsApp number (with country code, no + or spaces)
+const YOUR_PHONE_NUMBER = "919778250566"; // ← REPLACE WITH YOUR NUMBER
+
+// ===== UTILS =====
 async function axiosRetryRequest(config, retries = 3, delay = 1000) {
   try {
     return await axios(config);
   } catch (err) {
     if (err.response && err.response.status === 500 && retries > 0) {
-      console.warn(
-        `⚠️ Server 500 error. Retrying ${config.url} in ${delay}ms...`
-      );
+      console.warn(`⚠️ Server 500 error. Retrying ${config.url} in ${delay}ms...`);
       await new Promise((r) => setTimeout(r, delay));
       return axiosRetryRequest(config, retries - 1, delay * 2);
     }
@@ -38,68 +38,67 @@ async function axiosRetryRequest(config, retries = 3, delay = 1000) {
   }
 }
 
-// Start WhatsApp socket
+// ===== MAIN BOT =====
 async function startSock() {
   const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
 
-  // ✅ Socket config: NO HISTORY, NO SYNC, NO BUFFERING
   const sock = makeWASocket({
     auth: state,
-    printQRInTerminal: false,
+    printQRInTerminal: false, // Must be false for pairing code
+    browser: Browsers.macOS("Desktop"), // ✅ Critical for multi-device
+    markOnlineOnConnect: false,
     syncFullHistory: false,
     waitForChats: false,
-    markOnlineOnConnect: false,
-    browser: Browsers.appropriate("Chrome"),
     keepAliveIntervalMs: 30_000,
     connectTimeoutMs: 60_000,
     syncAppState: false,
     getMessage: async () => null,
     shouldSyncHistoryMessage: () => false,
-    downloadHistory: false,             
-    syncContacts: false,                
-    emitOwnEvents: false,              
-    fireInitQueries: false,             
-    transactionOpts: { maxCommitRetries: 1, maxUncommittedTransactions: 1 }
+    downloadHistory: false,
+    syncContacts: false,
+    emitOwnEvents: false,
+    fireInitQueries: false,
+    transactionOpts: { maxCommitRetries: 1, maxUncommittedTransactions: 1 },
   });
-
-  // QR & Connection
-  sock.ev.on(
-    "connection.update",
-    async ({ connection, qr, lastDisconnect }) => {
-      if (qr) {
-        console.log("📲 Scan the QR Code (terminal):");
-        qrcode.generate(qr, { small: true });
-
-        try {
-          const qrLink = await QRCode.toDataURL(qr);
-          console.log("\n🌐 Open this QR in browser (scan from phone):");
-          console.log(qrLink);
-        } catch (err) {
-          console.error("Failed to generate QR code link:", err);
-        }
-      }
-
-      if (connection === "close") {
-        const shouldReconnect =
-          lastDisconnect?.error?.output?.statusCode !==
-          DisconnectReason.loggedOut;
-        console.log("Disconnected. Reconnecting...");
-        if (shouldReconnect) {
-          setTimeout(() => startSock(), 3000); // ← Safer reconnect
-        } else {
-          console.log("Session expired. Delete auth_info_baileys and restart.");
-        }
-      } else if (connection === "open") {
-        console.log("✅ Connected to WhatsApp");
-      }
-    }
-  );
 
   sock.ev.on("creds.update", saveCreds);
 
-  // Handle PG group messages
+  // ===== CONNECTION HANDLER =====
+  sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
+    if (connection === "close") {
+      const shouldReconnect =
+        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      console.log("Disconnected. Reconnecting...");
+      if (shouldReconnect) {
+        setTimeout(() => startSock(), 3000);
+      } else {
+        console.log("Session expired. Delete auth_info_baileys and restart.");
+      }
+    } else if (connection === "open") {
+      console.log("✅ Connected to WhatsApp via pairing code!");
+
+      // ✅ Fix: Set offline presence AFTER connection
+      setTimeout(() => {
+        if (sock.user?.id) {
+          sock.sendPresenceUpdate("unavailable", sock.user.id);
+          console.log("✅ Set offline presence to restore phone notifications");
+        }
+      }, 1000);
+    }
+  });
+
+  // ===== FIRST-TIME: GENERATE PAIRING CODE =====
+  if (!sock.authState.creds.registered) {
+    console.log(`📱 Generating pairing code for ${YOUR_PHONE_NUMBER}...`);
+    const code = await sock.requestPairingCode(YOUR_PHONE_NUMBER);
+    console.log(`\n🔑 YOUR PAIRING CODE: ${code}\n`);
+    console.log("👉 On your phone: WhatsApp → Settings → Linked Devices → Pair with code");
+    return; // Stop here — wait for pairing
+  }
+
+  // ===== MESSAGE HANDLER (your existing logic) =====
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== "notify") return; // ← Only real-time new messages
+    if (type !== "notify") return;
     const msg = messages[0];
     const jid = msg.key.remoteJid;
     if (jid !== PG_GROUP_JID || !msg.message || msg.key.fromMe) return;
@@ -134,7 +133,7 @@ async function startSock() {
     }
   });
 
-  // Keep backend alive
+  // ===== KEEP ALIVE & CRON JOBS (your existing logic) =====
   cron.schedule("*/5 * * * *", async () => {
     try {
       await axiosRetryRequest({
@@ -147,7 +146,7 @@ async function startSock() {
     }
   });
 
-  // Evening reminder + start dynamic reminders
+  // Evening reminder
   cron.schedule("15 14 * * *", async () => {
     await sock.sendMessage(PG_GROUP_JID, {
       text: "📢 Good evening! Please submit your food order for tomorrow.\n\nFor breakfast please order before 9PM",
@@ -170,9 +169,7 @@ async function startSock() {
         url: `https://pg-app-backend.onrender.com/detailed_summary?date=${indiaTomorrow}`,
       });
       const orders = res.data.orders;
-      if (!orders || orders.length === 0 || res.data.total_orders === 0) {
-        return;
-      }
+      if (!orders || orders.length === 0 || res.data.total_orders === 0) return;
 
       const breakfastOrders = orders.filter((o) => o.breakfast);
       const breakfastNames = breakfastOrders.map((o) => o.username);
@@ -190,7 +187,7 @@ async function startSock() {
         await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
       }
       await sock.sendMessage(PG_GROUP_JID, { text: breakfastSummaryMsg });
-      console.log("✅ Sent breakfast summary to group and catering service");
+      console.log("✅ Sent breakfast summary");
     } catch (err) {
       console.error(err);
     }
@@ -209,9 +206,7 @@ async function startSock() {
         url: `https://pg-app-backend.onrender.com/detailed_summary?date=${indiaToday}`,
       });
       const orders = res.data.orders;
-      if (!orders || orders.length === 0 || res.data.total_orders === 0) {
-        return;
-      }
+      if (!orders || orders.length === 0 || res.data.total_orders === 0) return;
 
       const lunchOrders = orders.filter((o) => o.lunch);
       const lunchNames = lunchOrders.map((o) => o.username);
@@ -229,7 +224,7 @@ async function startSock() {
         await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
       }
       await sock.sendMessage(PG_GROUP_JID, { text: lunchSummaryMsg });
-      console.log("✅ Sent lunch summary to group and catering service");
+      console.log("✅ Sent lunch summary");
     } catch (err) {
       console.error(err);
     }
@@ -248,9 +243,7 @@ async function startSock() {
         url: `https://pg-app-backend.onrender.com/detailed_summary?date=${indiaToday}`,
       });
       const orders = res.data.orders;
-      if (!orders || orders.length === 0 || res.data.total_orders === 0) {
-        return;
-      }
+      if (!orders || orders.length === 0 || res.data.total_orders === 0) return;
 
       const dinnerOrders = orders.filter((o) => o.dinner);
       const dinnerNames = dinnerOrders.map((o) => o.username);
@@ -268,7 +261,7 @@ async function startSock() {
         await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
       }
       await sock.sendMessage(PG_GROUP_JID, { text: dinnerSummaryMsg });
-      console.log("✅ Sent dinner summary to group and catering service");
+      console.log("✅ Sent dinner summary");
     } catch (err) {
       console.error(err);
     }
@@ -305,14 +298,14 @@ async function startSock() {
       }
 
       await sock.sendMessage(PG_GROUP_JID, { text: summary });
-      console.log("✅ Sent 10 AM summary to group");
+      console.log("✅ Sent 10 AM summary");
     } catch (err) {
       console.error("Summary fetch failed:", err.message);
     }
   });
 }
 
-// Dynamic reminders loop
+// ===== DYNAMIC REMINDER (your existing logic) =====
 async function dynamicReminder(sock) {
   const interval = 120 * 60 * 1000; // 120 minutes
 
@@ -323,44 +316,28 @@ async function dynamicReminder(sock) {
       const utcMinute = now.getUTCMinutes();
       const istHour = (utcHour + 5 + Math.floor((utcMinute + 30) / 60)) % 24;
 
-      console.log(`IST Hour: ${istHour}`);
-      console.log(`Checking for missing orders at ${now.toLocaleTimeString()}`);
-
-      // Skip reminders between 1 AM and 6 AM
       if (istHour >= 1 && istHour < 6) {
-        console.log("😴 Sleeping hours (1 AM - 6 AM). Skipping reminders.");
         setTimeout(checkReplies, interval);
         return;
       }
 
-      // Decide whether to check today's or tomorrow's orders
       let targetDate = new Date();
       let day = "today";
       if (istHour >= 20) {
         targetDate.setDate(targetDate.getDate() + 1);
-        console.log("🌙 After 8 PM → Checking tomorrow's orders");
         day = "tomorrow";
-      } else if (istHour >= 6 && istHour < 13) {
-        console.log("🌞 Between 6 AM - 1 PM → Checking today's orders");
-        day = "today";
-      } else {
-        console.log("🕛 Midnight - 1 AM edge case. Skipping.");
+      } else if (!(istHour >= 6 && istHour < 13)) {
         setTimeout(checkReplies, interval);
         return;
       }
 
       const dateString = targetDate.toISOString().split("T")[0];
-
       const res = await axiosRetryRequest({
         method: "GET",
         url: `https://pg-app-backend.onrender.com/missing_orders?date=${dateString}`,
       });
 
       const missing = res.data.missing_users || [];
-      console.log(
-        `Checked for missing orders (${dateString}). ${missing.length} pending.`
-      );
-
       if (missing.length === 0) {
         await sock.sendMessage(PG_GROUP_JID, {
           text: `✅ All members have already submitted their food orders for *${day}*!`,
@@ -368,12 +345,9 @@ async function dynamicReminder(sock) {
         return;
       }
 
-      // Build mentions
       const mentions = missing.map((m) => m.whatsapp_id);
       const memberListString = missing
-        .map(
-          (m, i) => `${i + 1}. @${m.whatsapp_id.split("@")[0]} (${m.username})`
-        )
+        .map((m, i) => `${i + 1}. @${m.whatsapp_id.split("@")[0]} (${m.username})`)
         .join("\n");
 
       await sock.sendMessage(PG_GROUP_JID, {
@@ -390,5 +364,5 @@ async function dynamicReminder(sock) {
   setTimeout(checkReplies, 0);
 }
 
-// Start bot
+// ===== START BOT =====
 startSock().catch(console.error);
