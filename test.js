@@ -1,116 +1,138 @@
-const {
+import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import pino from 'pino';
+import { Mutex } from 'async-mutex';
+import {
+  default as makeWASocket,
   useMultiFileAuthState,
-  makeWASocket,
   DisconnectReason,
-  Browsers,
-} = require("@whiskeysockets/baileys");
-const axios = require("axios");
-const qrcode = require("qrcode-terminal");
-const QRCode = require("qrcode");
+  makeCacheableSignalKeyStore,
+  delay,
+  Browsers
+} from '@whiskeysockets/baileys';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
-const PG_GROUP_JID = "120363404470997481@g.us";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-// Retry wrapper
-async function axiosRetryRequest(config, retries = 3, delay = 1000) {
-  try {
-    return await axios(config);
-  } catch (err) {
-    if (err.response && err.response.status === 500 && retries > 0) {
-      console.warn(
-        `⚠️ Server 500 error. Retrying ${config.url} in ${delay}ms...`
-      );
-      await new Promise((r) => setTimeout(r, delay));
-      return axiosRetryRequest(config, retries - 1, delay * 2);
-    }
-    throw err;
-  }
+const app = express();
+const port = 3000;
+
+const mutex = new Mutex();
+let session = null;
+const sessionDir = path.join(__dirname, 'session');
+
+// Ensure session directory exists
+if (!fs.existsSync(sessionDir)) {
+  fs.mkdirSync(sessionDir, { recursive: true });
 }
 
-async function startSock() {
-  const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
-  const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: false,
-    syncFullHistory: false,
+/**
+ * connector: initiates socket, handles connection updates, and sends pairing code on connection open.
+ * Implements retry with exponential backoff on disconnect.
+ * @param {string} phoneNumber Raw numeric string (no +, no spaces)
+ * @param {express.Response} res HTTP response to send pairing code JSON
+ * @param {number} attempt current retry attempt number
+ */
+async function connector(phoneNumber, res, attempt = 1) {
+  const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+
+  console.log(`>>>> Starting a new socket session for ${phoneNumber}, attempt ${attempt}`);
+
+  session = makeWASocket({
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
+    },
+    browser: Browsers.macOS('Safari'),
+    logger: pino({ level: 'silent' }),
     markOnlineOnConnect: false,
-    browser: Browsers.windows("WhatsApp Bot"),
-    shouldSyncHistoryMessages: false,
+    printQRInTerminal: false
   });
 
-  // QR & connection
-  sock.ev.on(
-    "connection.update",
-    async ({ connection, qr, lastDisconnect }) => {
-      if (qr) {
-        console.log("📲 Scan the QR Code (terminal):");
-        qrcode.generate(qr, { small: true });
+  session.ev.on('creds.update', (newCreds) => {
+    console.log('Creds updated, saving...');
+    saveCreds(newCreds);
+  });
 
+  session.ev.on('connection.update', async (update) => {
+    console.log('Connection Update:', update);
+    const { connection, lastDisconnect } = update;
+
+    if (connection === 'open') {
+      console.log('✅ Connected to WhatsApp (socket open).');
+
+      if (!session.authState.creds.registered) {
         try {
-          const qrLink = await QRCode.toDataURL(qr);
-          console.log("\n🌐 Open this QR in browser (scan from phone):");
-          console.log(qrLink);
-        } catch (err) {
-          console.error("Failed to generate QR code link:", err);
-        }
-      }
-
-      if (connection === "close") {
-        const shouldReconnect =
-          lastDisconnect?.error?.output?.statusCode !==
-          DisconnectReason.loggedOut;
-        console.log("❌ Disconnected. Reconnecting...");
-        if (shouldReconnect) startSock();
-      } else if (connection === "open") {
-        console.log("✅ Connected to WhatsApp");
-
-        // ---- TEST CODE: Fetch missing orders + send mentions ----
-        try {
-          const today = new Date();
-          const dateString = "2025-09-23";
-          const day = today.toLocaleDateString("en-US", { weekday: "long" });
-
-          const res = await axiosRetryRequest({
-            method: "GET",
-            url: `https://pg-app-backend.onrender.com/missing_orders?date=${dateString}`,
-          });
-
-          const missing = res.data.missing_users || [];
-          console.log(
-            `Checked for missing orders (${dateString}). ${missing.length} pending.`
-          );
-
-          if (missing.length === 0) {
-            await sock.sendMessage(PG_GROUP_JID, {
-              text: `✅ All members have already submitted their food orders for *${day}*!`,
-            });
-            return;
+          console.log('Requesting pairing code...');
+          const code = await session.requestPairingCode(phoneNumber);
+          const prettyCode = code?.match(/.{1,4}/g)?.join('-') || code;
+          console.log('📱 Pairing Code generated:', prettyCode);
+          if (!res.headersSent) {
+            res.json({ pairingCode: prettyCode });
           }
-
-          // Build mentions
-          const mentions = missing.map((m) => m.whatsapp_id);
-          const memberListString = missing
-            .map(
-              (m, i) =>
-                `${i + 1}. @${m.whatsapp_id.split("@")[0]} (${m.username})`
-            )
-            .join("\n");
-
-          await sock.sendMessage(PG_GROUP_JID, {
-            text: `⚠️ The following members have not yet submitted their food orders for *${day}*:\n\n${memberListString}\n\nPlease submit your order ASAP!`,
-            mentions: mentions,
-          });
-
-          console.log(
-            `⚠️ Reminder sent to group for ${day} orders with mentions.`
-          );
         } catch (err) {
-          console.error("❌ Backend fetch/send failed:", err.message);
+          console.error('❌ Error generating pairing code:', err);
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to get pairing code', details: err.toString() });
+          }
+        }
+      } else {
+        console.log('Already registered — no pairing code needed.');
+        if (!res.headersSent) {
+          res.json({ message: 'Already registered / session exists' });
         }
       }
     }
-  );
 
-  sock.ev.on("creds.update", saveCreds);
+    if (connection === 'close') {
+      const code = lastDisconnect?.error?.output?.statusCode;
+      console.warn(`❌ Socket closed, reason code = ${code}`);
+
+      if (
+        code !== DisconnectReason.loggedOut &&
+        code !== DisconnectReason.badSession
+      ) {
+        if (attempt <= 5) {
+          const delayTime = Math.pow(2, attempt) * 1000; // Exponential backoff
+          console.log(`🔄 Attempting reconnect in ${delayTime / 1000}s (attempt ${attempt})`);
+          await delay(delayTime);
+          await connector(phoneNumber, res, attempt + 1);
+        } else {
+          console.error('❌ Max retry attempts reached. Giving up.');
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Max reconnect attempts reached' });
+          }
+        }
+      } else {
+        console.log('Logged out / bad session. Will not auto reconnect.');
+      }
+    }
+  });
 }
 
-startSock();
+app.get('/pair', async (req, res) => {
+  const phoneNumberRaw = req.query.code;
+  if (!phoneNumberRaw) {
+    return res.status(400).json({ error: 'Missing phone number (query “code” param)' });
+  }
+  const phone = phoneNumberRaw.replace(/[^0-9]/g, '');
+
+  const release = await mutex.acquire();
+  try {
+    await connector(phone, res);
+  } catch (err) {
+    console.error('Internal connector error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error', details: err.toString() });
+    }
+  } finally {
+    release();
+  }
+});
+
+app.listen(port, () => {
+  console.log(`🟢 Server listening on http://localhost:${port}`);
+});
