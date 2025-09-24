@@ -21,8 +21,7 @@ const PG_MEMBERS = [
   { id: "919207605231@s.whatsapp.net", name: "Nikhil" },
 ];
 
-// Your WhatsApp number (with country code, no + or spaces)
-const YOUR_PHONE_NUMBER = "919778250566"; // ← REPLACE WITH YOUR NUMBER
+const YOUR_PHONE_NUMBER = "919778250566";
 
 // ===== UTILS =====
 async function axiosRetryRequest(config, retries = 3, delay = 1000) {
@@ -44,8 +43,8 @@ async function startSock() {
 
   const sock = makeWASocket({
     auth: state,
-    printQRInTerminal: false, // Must be false for pairing code
-    browser: Browsers.macOS("Desktop"), // ✅ Critical for multi-device
+    printQRInTerminal: false,
+    browser: Browsers.macOS("Desktop"),
     markOnlineOnConnect: false,
     syncFullHistory: false,
     waitForChats: false,
@@ -75,28 +74,35 @@ async function startSock() {
         console.log("Session expired. Delete auth_info_baileys and restart.");
       }
     } else if (connection === "open") {
-      console.log("✅ Connected to WhatsApp via pairing code!");
+      console.log("✅ WhatsApp socket connected!");
 
-      // ✅ Fix: Set offline presence AFTER connection
-      setTimeout(() => {
-        if (sock.user?.id) {
-          sock.sendPresenceUpdate("unavailable", sock.user.id);
-          console.log("✅ Set offline presence to restore phone notifications");
+      // ✅ ONLY NOW check if pairing is needed
+      if (!sock.authState.creds.registered) {
+        console.log(`📱 Requesting pairing code for ${YOUR_PHONE_NUMBER}...`);
+        try {
+          const code = await sock.requestPairingCode(YOUR_PHONE_NUMBER);
+          console.log(`\n🔑 PAIRING CODE: ${code}\n`);
+          console.log("👉 On your phone: WhatsApp → Settings → Linked Devices → Pair with code");
+          // Keep process alive — do NOT return or exit
+        } catch (err) {
+          console.error("❌ Failed to generate pairing code:", err.message);
         }
-      }, 1000);
+      } else {
+        console.log("✅ Already registered. Setting offline presence...");
+        setTimeout(() => {
+          if (sock.user?.id) {
+            sock.sendPresenceUpdate("unavailable", sock.user.id);
+            console.log("✅ Offline presence set — phone notifications should work now");
+          }
+        }, 1000);
+
+        // Start cron jobs only after successful registration
+        setupCronJobs(sock);
+      }
     }
   });
 
-  // ===== FIRST-TIME: GENERATE PAIRING CODE =====
-  if (!sock.authState.creds.registered) {
-    console.log(`📱 Generating pairing code for ${YOUR_PHONE_NUMBER}...`);
-    const code = await sock.requestPairingCode(YOUR_PHONE_NUMBER);
-    console.log(`\n🔑 YOUR PAIRING CODE: ${code}\n`);
-    console.log("👉 On your phone: WhatsApp → Settings → Linked Devices → Pair with code");
-    return; // Stop here — wait for pairing
-  }
-
-  // ===== MESSAGE HANDLER (your existing logic) =====
+  // ===== MESSAGE HANDLER (always active) =====
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
     const msg = messages[0];
@@ -133,20 +139,21 @@ async function startSock() {
     }
   });
 
-  // ===== KEEP ALIVE & CRON JOBS (your existing logic) =====
+  // Return sock so cron can use it (optional)
+  return sock;
+}
+
+// ===== CRON JOBS (only start after registration) =====
+function setupCronJobs(sock) {
   cron.schedule("*/5 * * * *", async () => {
     try {
-      await axiosRetryRequest({
-        method: "GET",
-        url: "https://pg-app-backend.onrender.com/ping",
-      });
+      await axiosRetryRequest({ method: "GET", url: "https://pg-app-backend.onrender.com/ping" });
       console.log("🔄 Pinged backend to keep Render alive");
     } catch (err) {
       console.error("Ping failed:", err.message);
     }
   });
 
-  // Evening reminder
   cron.schedule("15 14 * * *", async () => {
     await sock.sendMessage(PG_GROUP_JID, {
       text: "📢 Good evening! Please submit your food order for tomorrow.\n\nFor breakfast please order before 9PM",
@@ -305,9 +312,9 @@ async function startSock() {
   });
 }
 
-// ===== DYNAMIC REMINDER (your existing logic) =====
+// ===== DYNAMIC REMINDER =====
 async function dynamicReminder(sock) {
-  const interval = 120 * 60 * 1000; // 120 minutes
+  const interval = 120 * 60 * 1000;
 
   const checkReplies = async () => {
     try {
