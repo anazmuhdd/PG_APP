@@ -37,30 +37,88 @@ async function axiosRetryRequest(config, retries = 3, delay = 1000) {
     throw err;
   }
 }
+// Presence helpers (debounce & heartbeat)
+function createPresenceController(sock) {
+  let lastPresenceAt = 0;
+  const debounceMs = 30 * 1000; // at most one presence update every 30s
+  let heartbeatInterval = null;
+
+  async function sendUnavailableDebounced() {
+    const now = Date.now();
+    if (now - lastPresenceAt < debounceMs) return;
+    lastPresenceAt = now;
+    try {
+      // send 'unavailable' presence to tell WhatsApp: bot is not actively reading
+      await sock.sendPresenceUpdate("unavailable");
+      // also subscribe to presence for group/users if needed:
+      // await sock.presenceSubscribe(PG_GROUP_JID) // optional
+      console.log("presence: sent 'unavailable'");
+    } catch (err) {
+      console.warn(
+        "presence: failed to send 'unavailable'",
+        err?.message || err
+      );
+    }
+  }
+
+  function startHeartbeat(ms = 5 * 60 * 1000) {
+    // send heartbeat every 5 minutes by default
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    heartbeatInterval = setInterval(() => {
+      sendUnavailableDebounced().catch((e) => {
+        console.warn("presence heartbeat error:", e?.message || e);
+      });
+    }, ms);
+  }
+
+  function stopHeartbeat() {
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
+  }
+
+  return {
+    sendUnavailableDebounced,
+    startHeartbeat,
+    stopHeartbeat,
+  };
+}
 
 // Start WhatsApp socket
 async function startSock() {
   const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
+
   const sock = makeWASocket({
     auth: state,
     printQRInTerminal: false,
     syncFullHistory: false,
-    markOnlineOnConnect: false,
-    browser: Browsers.windows("WhatsApp Bot"),
+    markOnlineOnConnect: false, // important
+    browser: Browsers.macOS("WhatsApp Bot"), // you can change this to windows or chrome
+    connectTimeoutMs: 60_000,
+    keepAliveIntervalMs: 30_000,
     shouldSyncHistoryMessages: false,
   });
+
+  // create presence controller for this sock
+  const presenceCtrl = createPresenceController(sock);
 
   // QR & Connection
   sock.ev.on(
     "connection.update",
-    async ({ connection, qr, lastDisconnect }) => {
+    async ({
+      connection,
+      qr,
+      lastDisconnect,
+      receivedPendingNotifications,
+    }) => {
       if (qr) {
         console.log("📲 Scan the QR Code (terminal):");
         qrcode.generate(qr, { small: true });
 
         try {
           const qrLink = await QRCode.toDataURL(qr);
-          console.log("\n🌐 Open this QR in browser (scan from phone):");
+          console.log("\n🌐 QR (data url) - open in browser to scan:");
           console.log(qrLink);
         } catch (err) {
           console.error("Failed to generate QR code link:", err);
@@ -71,13 +129,31 @@ async function startSock() {
         const shouldReconnect =
           lastDisconnect?.error?.output?.statusCode !==
           DisconnectReason.loggedOut;
-        console.log("Disconnected. Reconnecting...");
-        if (shouldReconnect) startSock();
+        console.log("Disconnected. Reconnecting...", {
+          code: lastDisconnect?.error?.output?.statusCode,
+        });
+        presenceCtrl.stopHeartbeat();
+        if (shouldReconnect) {
+          setTimeout(() => startSock(), 2000);
+        }
       } else if (connection === "open") {
         console.log("✅ Connected to WhatsApp");
+
+        // Immediately mark presence unavailable and start heartbeat (key step)
+        try {
+          await sock.sendPresenceUpdate("unavailable");
+          presenceCtrl.startHeartbeat(5 * 60 * 1000); // every 5 minutes
+          console.log(
+            "presence: initial 'unavailable' sent and heartbeat started"
+          );
+        } catch (err) {
+          console.warn("presence initial update failed:", err?.message || err);
+        }
       }
     }
   );
+
+  sock.ev.on("creds.update", saveCreds);
 
   sock.ev.on("creds.update", saveCreds);
 
