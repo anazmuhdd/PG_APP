@@ -21,8 +21,6 @@ const PG_MEMBERS = [
   { id: "919188712388@s.whatsapp.net", name: "Nihal" },
   { id: "919207605231@s.whatsapp.net", name: "Nikhil" },
 ];
-
-// Retry wrapper for axios
 async function axiosRetryRequest(config, retries = 3, delay = 1000) {
   try {
     return await axios(config);
@@ -37,10 +35,9 @@ async function axiosRetryRequest(config, retries = 3, delay = 1000) {
     throw err;
   }
 }
-// Presence helpers (debounce & heartbeat)
 function createPresenceController(sock) {
   let lastPresenceAt = 0;
-  const debounceMs = 30 * 1000; // at most one presence update every 30s
+  const debounceMs = 30 * 1000;
   let heartbeatInterval = null;
 
   async function sendUnavailableDebounced() {
@@ -48,10 +45,7 @@ function createPresenceController(sock) {
     if (now - lastPresenceAt < debounceMs) return;
     lastPresenceAt = now;
     try {
-      // send 'unavailable' presence to tell WhatsApp: bot is not actively reading
       await sock.sendPresenceUpdate("unavailable");
-      // also subscribe to presence for group/users if needed:
-      // await sock.presenceSubscribe(PG_GROUP_JID) // optional
       console.log("presence: sent 'unavailable'");
     } catch (err) {
       console.warn(
@@ -62,7 +56,6 @@ function createPresenceController(sock) {
   }
 
   function startHeartbeat(ms = 5 * 60 * 1000) {
-    // send heartbeat every 5 minutes by default
     if (heartbeatInterval) clearInterval(heartbeatInterval);
     heartbeatInterval = setInterval(() => {
       sendUnavailableDebounced().catch((e) => {
@@ -85,7 +78,6 @@ function createPresenceController(sock) {
   };
 }
 
-// Start WhatsApp socket
 async function startSock() {
   const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
 
@@ -93,17 +85,15 @@ async function startSock() {
     auth: state,
     printQRInTerminal: false,
     syncFullHistory: false,
-    markOnlineOnConnect: false, // important
-    browser: Browsers.macOS("WhatsApp Bot"), // you can change this to windows or chrome
+    markOnlineOnConnect: false,
+    browser: Browsers.macOS("WhatsApp Bot"),
     connectTimeoutMs: 60_000,
     keepAliveIntervalMs: 30_000,
     shouldSyncHistoryMessages: false,
   });
 
-  // create presence controller for this sock
   const presenceCtrl = createPresenceController(sock);
 
-  // QR & Connection
   sock.ev.on(
     "connection.update",
     async ({
@@ -138,8 +128,6 @@ async function startSock() {
         }
       } else if (connection === "open") {
         console.log("✅ Connected to WhatsApp");
-
-        // Immediately mark presence unavailable and start heartbeat (key step)
         try {
           await sock.sendPresenceUpdate("unavailable");
           presenceCtrl.startHeartbeat(5 * 60 * 1000); // every 5 minutes
@@ -157,7 +145,6 @@ async function startSock() {
 
   sock.ev.on("creds.update", saveCreds);
 
-  // Handle PG group messages
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
     const msg = messages[0];
@@ -208,9 +195,9 @@ async function startSock() {
   });
 
   // Evening reminder + start dynamic reminders
-  cron.schedule("15 14 * * *", async () => {
+  cron.schedule("00 14 * * *", async () => {
     await sock.sendMessage(PG_GROUP_JID, {
-      text: "📢 Good evening! Please submit your food order for tomorrow.\n\nFor breakfast please order before 9PM",
+      text: "📢 Good evening! Please submit your food order for tomorrow.\n\nFor breakfast and lunch please order before 9PM",
     });
     console.log("✅ Sent 7:30 PM reminder to PG group");
     dynamicReminder(sock);
@@ -237,6 +224,9 @@ async function startSock() {
       const breakfastOrders = orders.filter((o) => o.breakfast);
       const breakfastNames = breakfastOrders.map((o) => o.username);
       const breakfastCount = breakfastOrders.length;
+      const lunchOrders = orders.filter((o) => o.lunch);
+      const lunchNames = lunchOrders.map((o) => o.username);
+      const lunchCount = lunchOrders.length;
 
       const breakfastSummaryMsg = `🍳 *Breakfast Orders for Tomorrow*\n\n${
         breakfastNames.length > 0
@@ -244,38 +234,9 @@ async function startSock() {
           : "No orders yet."
       }\n\nNo more orders can be placed for breakfast now.`;
 
-      const malayalamMsg = `ചേച്ചി, \n\nനാളെ (${indiaTomorrow}),\n${breakfastCount} പേർക്ക് ബ്രേക്ക്‌ഫാസ്റ്റ് വേണം.`;
-
-      if (breakfastCount > 0) {
-        await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
-      }
       await sock.sendMessage(PG_GROUP_JID, { text: breakfastSummaryMsg });
+
       console.log("✅ Sent breakfast summary to group and catering service");
-    } catch (err) {
-      console.error(err);
-    }
-  });
-
-  // Lunch summary (6:30 AM IST)
-  cron.schedule("00 01 * * *", async () => {
-    const now = new Date();
-    const indiaOffsetMs = 5.5 * 60 * 60 * 1000;
-    const indiaNow = new Date(now.getTime() + indiaOffsetMs);
-    const indiaToday = indiaNow.toISOString().split("T")[0];
-
-    try {
-      const res = await axiosRetryRequest({
-        method: "GET",
-        url: `https://pg-app-backend.onrender.com/detailed_summary?date=${indiaToday}`,
-      });
-      const orders = res.data.orders;
-      if (!orders || orders.length === 0 || res.data.total_orders === 0) {
-        return;
-      }
-
-      const lunchOrders = orders.filter((o) => o.lunch);
-      const lunchNames = lunchOrders.map((o) => o.username);
-      const lunchCount = lunchOrders.length;
 
       const lunchSummaryMsg = `🍛 *Lunch Orders for Today*\n\n${
         lunchNames.length > 0
@@ -283,19 +244,23 @@ async function startSock() {
           : "No orders yet."
       }\n\nNo more orders can be placed for lunch now.`;
 
-      const malayalamMsg = `ചേച്ചി, \n\nഇന്ന് (${indiaToday}),\n${lunchCount} പേർക്ക് ഊണ് വേണം.`;
-
-      if (lunchCount > 0) {
-        await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
-      }
       await sock.sendMessage(PG_GROUP_JID, { text: lunchSummaryMsg });
       console.log("✅ Sent lunch summary to group and catering service");
+
+      const malayalamMsg = `ചേച്ചി, \n\nനാളെ (${indiaTomorrow}),\n${breakfastCount} പേർക്ക് ബ്രേക്ക്‌ഫാസ്റ്റ് വേണം.
+      \n${lunchCount} പേർക്ക് ഊണ് വേണം.`;
+
+      if (breakfastCount > 0 || lunchCount > 0) {
+        await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
+        await sock.sendMessage(PG_GROUP_JID, {
+          text: "*Order for Breakfast and Lunch placed to Catering service.*",
+        });
+      }
     } catch (err) {
       console.error(err);
     }
   });
 
-  // Dinner summary (12:30 PM IST)
   cron.schedule("00 07 * * *", async () => {
     const now = new Date();
     const indiaOffsetMs = 5.5 * 60 * 60 * 1000;
@@ -329,13 +294,15 @@ async function startSock() {
       }
       await sock.sendMessage(PG_GROUP_JID, { text: dinnerSummaryMsg });
       console.log("✅ Sent dinner summary to group and catering service");
+      await sock.sendMessage(PG_GROUP_JID, {
+        text: "*Order for Dinner placed to Catering service.*",
+      });
     } catch (err) {
       console.error(err);
     }
   });
 
-  // Daily summary (10 AM IST)
-  cron.schedule("30 4 * * *", async () => {
+  cron.schedule("30 7 * * *", async () => {
     try {
       const today = new Date();
       const indiaOffsetMs = 5.5 * 60 * 60 * 1000;
@@ -374,7 +341,7 @@ async function startSock() {
 
 // Dynamic reminders loop
 async function dynamicReminder(sock) {
-  const interval = 120 * 60 * 1000; // 120 minutes
+  const interval = 180 * 60 * 1000; // 120 minutes
 
   const checkReplies = async () => {
     try {
