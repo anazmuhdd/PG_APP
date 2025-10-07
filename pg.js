@@ -143,12 +143,10 @@ async function startSock() {
 
   sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("creds.update", saveCreds);
-
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
     const msg = messages[0];
-    const jid = msg.key.remoteJid;
+    const jid = msg.key.participantAlt;
     if (jid !== PG_GROUP_JID || !msg.message || msg.key.fromMe) return;
 
     const sender = msg.key.participant || msg.key.remoteJid;

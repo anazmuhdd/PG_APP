@@ -1,12 +1,14 @@
-const {
+import {
   useMultiFileAuthState,
   makeWASocket,
   DisconnectReason,
   Browsers,
-} = require("@whiskeysockets/baileys");
-const axios = require("axios");
-const qrcode = require("qrcode-terminal");
-const QRCode = require("qrcode");
+  isPnUser,
+} from "@whiskeysockets/baileys";
+
+import axios from "axios";
+import qrcode from "qrcode-terminal";
+import QRCode from "qrcode";
 
 const PG_GROUP_JID = "120363404470997481@g.us";
 
@@ -37,80 +39,95 @@ async function startSock() {
     shouldSyncHistoryMessages: false,
   });
 
-  // QR & connection
-  sock.ev.on(
-    "connection.update",
-    async ({ connection, qr, lastDisconnect }) => {
-      if (qr) {
-        console.log("📲 Scan the QR Code (terminal):");
-        qrcode.generate(qr, { small: true });
+  // Ensure auth state supports LID mapping (required in v7)
+  // useMultiFileAuthState already handles this if you're on latest Baileys
 
-        try {
-          const qrLink = await QRCode.toDataURL(qr);
-          console.log("\n🌐 Open this QR in browser (scan from phone):");
-          console.log(qrLink);
-        } catch (err) {
-          console.error("Failed to generate QR code link:", err);
-        }
-      }
+  sock.ev.on("connection.update", async ({ connection, qr, lastDisconnect }) => {
+    if (qr) {
+      console.log("📲 Scan the QR Code (terminal):");
+      qrcode.generate(qr, { small: true });
 
-      if (connection === "close") {
-        const shouldReconnect =
-          lastDisconnect?.error?.output?.statusCode !==
-          DisconnectReason.loggedOut;
-        console.log("❌ Disconnected. Reconnecting...");
-        if (shouldReconnect) startSock();
-      } else if (connection === "open") {
-        console.log("✅ Connected to WhatsApp");
-
-        // ---- TEST CODE: Fetch missing orders + send mentions ----
-        try {
-          const today = new Date();
-          const dateString = "2025-09-23";
-          const day = today.toLocaleDateString("en-US", { weekday: "long" });
-
-          const res = await axiosRetryRequest({
-            method: "GET",
-            url: `https://pg-app-backend.onrender.com/missing_orders?date=${dateString}`,
-          });
-
-          const missing = res.data.missing_users || [];
-          console.log(
-            `Checked for missing orders (${dateString}). ${missing.length} pending.`
-          );
-
-          if (missing.length === 0) {
-            await sock.sendMessage(PG_GROUP_JID, {
-              text: `✅ All members have already submitted their food orders for *${day}*!`,
-            });
-            return;
-          }
-
-          // Build mentions
-          const mentions = missing.map((m) => m.whatsapp_id);
-          const memberListString = missing
-            .map(
-              (m, i) =>
-                `${i + 1}. @${m.whatsapp_id.split("@")[0]} (${m.username})`
-            )
-            .join("\n");
-
-          await sock.sendMessage(PG_GROUP_JID, {
-            text: `⚠️ The following members have not yet submitted their food orders for *${day}*:\n\n${memberListString}\n\nPlease submit your order ASAP!`,
-            mentions: mentions,
-          });
-
-          console.log(
-            `⚠️ Reminder sent to group for ${day} orders with mentions.`
-          );
-        } catch (err) {
-          console.error("❌ Backend fetch/send failed:", err.message);
-        }
+      try {
+        const qrLink = await QRCode.toDataURL(qr);
+        console.log("\n🌐 Open this QR in browser:");
+        console.log(qrLink);
+      } catch (err) {
+        console.error("Failed to generate QR code link:", err);
       }
     }
-  );
+
+    if (connection === "close") {
+      const shouldReconnect =
+        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      console.log("❌ Disconnected. Reconnecting...");
+      if (shouldReconnect) startSock();
+    } else if (connection === "open") {
+      console.log("✅ Connected to WhatsApp");
+    }
+  });
 
   sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("messages.upsert", async ({ messages, type }) => {
+    if (type !== "notify") return;
+    const msg = messages[0];
+    if (!msg.message || msg.key.fromMe) return;
+
+    // === Extract ALL available IDs for debugging ===
+    const {
+      remoteJid,      // Main chat JID (group or user)
+      participant,    // Sender in group context
+      remoteJidAlt,   // Alternate for DMs (PN if remoteJid is LID, or vice versa)
+      participantAlt, // Alternate for groups (PN if participant is LID)
+    } = msg.key;
+
+    console.log("\n🔍 Message ID Debug Info:");
+    console.log("remoteJid     :", remoteJid);
+    console.log("remoteJidAlt  :", remoteJidAlt);
+    console.log("participant   :", participant);
+    console.log("participantAlt:", participantAlt);
+
+    // === Determine if it's a group or DM ===
+    const isGroup = remoteJid.endsWith("@g.us");
+    let userId; // <-- This will be the canonical user ID
+
+    if (isGroup) {
+      userId = participant; // This is the sender's ID (LID or PN)
+    } else {
+      userId = remoteJid; // In DMs, the chat JID is the user's ID
+    }
+    let phoneNumber;
+    try {
+      phoneNumber = isPnUser(userId) ? userId : null;
+    } catch (e) {
+      console.warn("Could not fetch phone number:", e.message);
+    }
+    // === Get phone number if available (for logging or legacy use) ===
+    // === Get user name (you'll need to fetch contact or use group metadata) ===
+    let senderName = "Unknown";
+    try {
+      if (isGroup) {
+        const groupMeta = await sock.groupMetadata(remoteJid);
+        const participantInfo = groupMeta.participants.find(p => p.id === userId);
+        senderName = participantInfo?.name || "Unknown";
+      } else {
+        // For DMs, you can try to get contact
+        const contact = await sock.contacts?.[userId];
+        senderName = contact?.name || "Unknown";
+      }
+    } catch (e) {
+      console.warn("Could not fetch sender name:", e.message);
+    }
+
+    // === Extract message text ===
+    const text =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text ||
+      "[Non-text message]";
+
+    console.log(`📩 From: ${senderName} | ID: ${userId} | Phone: ${phoneNumber || 'N/A'} | Group: ${isGroup ? remoteJid : 'DM'}`);
+    console.log(`💬 Text: ${text}`);
+  });
 }
 
 startSock();
