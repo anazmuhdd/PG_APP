@@ -14,9 +14,9 @@
   ],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.19",
+    "@whiskeysockets/baileys": "^7.0.0-rc.5",
     "axios": "^1.11.0",
     "node-cron": "^4.2.1",
     "qrcode": "^1.5.4",
