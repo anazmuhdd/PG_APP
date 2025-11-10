@@ -1,13 +1,13 @@
-const {
+import {
   useMultiFileAuthState,
   makeWASocket,
   DisconnectReason,
   Browsers,
-} = require("@whiskeysockets/baileys");
-const axios = require("axios");
-const qrcode = require("qrcode-terminal");
-const QRCode = require("qrcode");
-const cron = require("node-cron");
+} from "@whiskeysockets/baileys";
+import axios from "axios";
+import qrcode from "qrcode-terminal";
+import QRCode from "qrcode";
+import cron from "node-cron";
 
 const PG_GROUP_JID = "120363404470997481@g.us";
 const cateringServiceJID = "919847413782@s.whatsapp.net";
@@ -143,15 +143,13 @@ async function startSock() {
 
   sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("creds.update", saveCreds);
-
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
     const msg = messages[0];
     const jid = msg.key.remoteJid;
     if (jid !== PG_GROUP_JID || !msg.message || msg.key.fromMe) return;
 
-    const sender = msg.key.participant || msg.key.remoteJid;
+    const sender = msg.key.participantAlt || msg.key.participant;
     const member = PG_MEMBERS.find((m) => m.id === sender);
     const senderName = member ? member.name : "Unknown";
     const text =
