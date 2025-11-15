@@ -3,16 +3,24 @@ import {
   makeWASocket,
   DisconnectReason,
   Browsers,
-  isPnUser,
 } from "@whiskeysockets/baileys";
-
 import axios from "axios";
 import qrcode from "qrcode-terminal";
 import QRCode from "qrcode";
+import cron from "node-cron";
 
 const PG_GROUP_JID = "120363404470997481@g.us";
-
-// Retry wrapper
+const cateringServiceJID = "919847413782@s.whatsapp.net";
+const PG_MEMBERS = [
+  { id: "919074211782@s.whatsapp.net", name: "Akash" },
+  { id: "919645829304@s.whatsapp.net", name: "Akhinesh" },
+  { id: "919188775142@s.whatsapp.net", name: "Alvin" },
+  { id: "917306731189@s.whatsapp.net", name: "Amal" },
+  { id: "919207066956@s.whatsapp.net", name: "Kasi" },
+  { id: "916238007254@s.whatsapp.net", name: "Kurian" },
+  { id: "919188712388@s.whatsapp.net", name: "Nihal" },
+  { id: "919207605231@s.whatsapp.net", name: "Nikhil" },
+];
 async function axiosRetryRequest(config, retries = 3, delay = 1000) {
   try {
     return await axios(config);
@@ -27,107 +35,129 @@ async function axiosRetryRequest(config, retries = 3, delay = 1000) {
     throw err;
   }
 }
+function createPresenceController(sock) {
+  let lastPresenceAt = 0;
+  const debounceMs = 30 * 1000;
+  let heartbeatInterval = null;
+
+  async function sendUnavailableDebounced() {
+    const now = Date.now();
+    if (now - lastPresenceAt < debounceMs) return;
+    lastPresenceAt = now;
+    try {
+      await sock.sendPresenceUpdate("unavailable");
+      console.log("presence: sent 'unavailable'");
+    } catch (err) {
+      console.warn(
+        "presence: failed to send 'unavailable'",
+        err?.message || err
+      );
+    }
+  }
+
+  function startHeartbeat(ms = 5 * 60 * 1000) {
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    heartbeatInterval = setInterval(() => {
+      sendUnavailableDebounced().catch((e) => {
+        console.warn("presence heartbeat error:", e?.message || e);
+      });
+    }, ms);
+  }
+
+  function stopHeartbeat() {
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
+  }
+
+  return {
+    sendUnavailableDebounced,
+    startHeartbeat,
+    stopHeartbeat,
+  };
+}
 
 async function startSock() {
   const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
+
   const sock = makeWASocket({
     auth: state,
     printQRInTerminal: false,
     syncFullHistory: false,
     markOnlineOnConnect: false,
-    browser: Browsers.windows("WhatsApp Bot"),
+    browser: Browsers.macOS("WhatsApp Bot"),
+    connectTimeoutMs: 60_000,
+    keepAliveIntervalMs: 30_000,
     shouldSyncHistoryMessages: false,
   });
 
-  // Ensure auth state supports LID mapping (required in v7)
-  // useMultiFileAuthState already handles this if you're on latest Baileys
+  const presenceCtrl = createPresenceController(sock);
 
-  sock.ev.on("connection.update", async ({ connection, qr, lastDisconnect }) => {
-    if (qr) {
-      console.log("📲 Scan the QR Code (terminal):");
-      qrcode.generate(qr, { small: true });
+  sock.ev.on(
+    "connection.update",
+    async ({
+      connection,
+      qr,
+      lastDisconnect,
+      receivedPendingNotifications,
+    }) => {
+      if (qr) {
+        console.log("📲 Scan the QR Code (terminal):");
+        qrcode.generate(qr, { small: true });
 
-      try {
-        const qrLink = await QRCode.toDataURL(qr);
-        console.log("\n🌐 Open this QR in browser:");
-        console.log(qrLink);
-      } catch (err) {
-        console.error("Failed to generate QR code link:", err);
+        try {
+          const qrLink = await QRCode.toDataURL(qr);
+          console.log("\n🌐 QR (data url) - open in browser to scan:");
+          console.log(qrLink);
+        } catch (err) {
+          console.error("Failed to generate QR code link:", err);
+        }
+      }
+
+      if (connection === "close") {
+        const shouldReconnect =
+          lastDisconnect?.error?.output?.statusCode !==
+          DisconnectReason.loggedOut;
+        console.log("Disconnected. Reconnecting...", {
+          code: lastDisconnect?.error?.output?.statusCode,
+        });
+        presenceCtrl.stopHeartbeat();
+        if (shouldReconnect) {
+          setTimeout(() => startSock(), 2000);
+        }
+      } else if (connection === "open") {
+        console.log("✅ Connected to WhatsApp");
+        try {
+          await sock.sendPresenceUpdate("unavailable");
+          presenceCtrl.startHeartbeat(5 * 60 * 1000); // every 5 minutes
+          console.log(
+            "presence: initial 'unavailable' sent and heartbeat started"
+          );
+        } catch (err) {
+          console.warn("presence initial update failed:", err?.message || err);
+        }
       }
     }
-
-    if (connection === "close") {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log("❌ Disconnected. Reconnecting...");
-      if (shouldReconnect) startSock();
-    } else if (connection === "open") {
-      console.log("✅ Connected to WhatsApp");
-    }
-  });
+  );
 
   sock.ev.on("creds.update", saveCreds);
 
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
     const msg = messages[0];
-    if (!msg.message || msg.key.fromMe) return;
-
-    // === Extract ALL available IDs for debugging ===
-    const {
-      remoteJid,      // Main chat JID (group or user)
-      participant,    // Sender in group context
-      remoteJidAlt,   // Alternate for DMs (PN if remoteJid is LID, or vice versa)
-      participantAlt, // Alternate for groups (PN if participant is LID)
-    } = msg.key;
-
-    console.log("\n🔍 Message ID Debug Info:");
-    console.log("remoteJid     :", remoteJid);
-    console.log("remoteJidAlt  :", remoteJidAlt);
-    console.log("participant   :", participant);
-    console.log("participantAlt:", participantAlt);
-
-    // === Determine if it's a group or DM ===
-    const isGroup = remoteJid.endsWith("@g.us");
-    let userId; // <-- This will be the canonical user ID
-
-    if (isGroup) {
-      userId = participant; // This is the sender's ID (LID or PN)
-    } else {
-      userId = remoteJid; // In DMs, the chat JID is the user's ID
-    }
-    let phoneNumber;
-    try {
-      phoneNumber = isPnUser(userId) ? userId : null;
-    } catch (e) {
-      console.warn("Could not fetch phone number:", e.message);
-    }
-    // === Get phone number if available (for logging or legacy use) ===
-    // === Get user name (you'll need to fetch contact or use group metadata) ===
-    let senderName = "Unknown";
-    try {
-      if (isGroup) {
-        const groupMeta = await sock.groupMetadata(remoteJid);
-        const participantInfo = groupMeta.participants.find(p => p.id === userId);
-        senderName = participantInfo?.name || "Unknown";
-      } else {
-        // For DMs, you can try to get contact
-        const contact = await sock.contacts?.[userId];
-        senderName = contact?.name || "Unknown";
-      }
-    } catch (e) {
-      console.warn("Could not fetch sender name:", e.message);
-    }
-
-    // === Extract message text ===
+    const jid = msg.key.remoteJid;
+    // if (jid !== PG_GROUP_JID || !msg.message || msg.key.fromMe) return;
+    console.log("jid:", jid);
+    const sender = msg.key.participantAlt || msg.key.participant;
+    const member = PG_MEMBERS.find((m) => m.id === sender);
+    const senderName = member ? member.name : "Unknown";
     const text =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text ||
-      "[Non-text message]";
+      msg.message.conversation || msg.message.extendedTextMessage?.text;
 
-    console.log(`📩 From: ${senderName} | ID: ${userId} | Phone: ${phoneNumber || 'N/A'} | Group: ${isGroup ? remoteJid : 'DM'}`);
-    console.log(`💬 Text: ${text}`);
+    console.log(`Received from ${senderName} (${sender}): ${text}`);
   });
 }
 
-startSock();
+// Start bot
+startSock().catch(console.error);
