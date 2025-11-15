@@ -12,14 +12,15 @@ import cron from "node-cron";
 const PG_GROUP_JID = "120363404470997481@g.us";
 const cateringServiceJID = "919847413782@s.whatsapp.net";
 const PG_MEMBERS = [
-  { id: "919074211782@s.whatsapp.net", name: "Akash" },
-  { id: "919645829304@s.whatsapp.net", name: "Akhinesh" },
-  { id: "919188775142@s.whatsapp.net", name: "Alvin" },
-  { id: "917306731189@s.whatsapp.net", name: "Amal" },
-  { id: "919207066956@s.whatsapp.net", name: "Kasi" },
-  { id: "916238007254@s.whatsapp.net", name: "Kurian" },
-  { id: "919188712388@s.whatsapp.net", name: "Nihal" },
-  { id: "919207605231@s.whatsapp.net", name: "Nikhil" },
+  { id: "919074211782@s.whatsapp.net", name: "Akash Ettayi" },
+  { id: "919645829304@s.whatsapp.net", name: "Akhii Bhaii" },
+  { id: "919188775142@s.whatsapp.net", name: "Alvin Puliveli" },
+  { id: "917306731189@s.whatsapp.net", name: "Sheikhikka" },
+  { id: "919207066956@s.whatsapp.net", name: "Kasi Kutta" },
+  { id: "916238007254@s.whatsapp.net", name: "Kuriappi" },
+  { id: "919188712388@s.whatsapp.net", name: "Pro Nihal" },
+  { id: "919207605231@s.whatsapp.net", name: "Chunnikutta" },
+  { id: "918590730424@s.whatsapp.net", name: "Vishuu" },
 ];
 async function axiosRetryRequest(config, retries = 3, delay = 1000) {
   try {
