@@ -175,7 +175,6 @@ async function startSock() {
       }
 
       await sock.sendMessage(jid, { text: reply || "✅ Order received" });
-      await sock.sendMessage(sender, { text: reply || "✅ Order received" });
     } catch (err) {
       await sock.sendMessage(jid, {
         text: "Application server down. Please try again",
