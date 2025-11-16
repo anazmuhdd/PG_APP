@@ -365,19 +365,22 @@ async function dynamicReminder(sock) {
       // Decide whether to check today's or tomorrow's orders
       let targetDate = new Date();
       let day = "today";
-      if (istHour >= 20) {
-        targetDate.setDate(targetDate.getDate() + 1);
-        console.log("🌙 After 8 PM → Checking tomorrow's orders");
-        day = "tomorrow";
-      } else if (istHour >= 6 && istHour < 13) {
-        console.log("🌞 Between 6 AM - 1 PM → Checking today's orders");
-        day = "today";
-      } else {
+      if (istHour >= 1 && istHour < 6) {
         console.log("🕛 Midnight - 1 AM edge case. Skipping.");
         setTimeout(checkReplies, interval);
         return;
+      } else if (istHour >= 6 && istHour < 13) {
+        console.log("🌞 Between 6 AM - 1 PM → Checking today's orders");
+        day = "today";
+      } else if (istHour >= 20) {
+        targetDate.setDate(targetDate.getDate() + 1);
+        console.log("🌙 After 8 PM → Checking tomorrow's orders");
+        day = "tomorrow";
+      } else {
+        console.log("🕛Skipping reminders.");
+        setTimeout(checkReplies, interval);
+        return;
       }
-
       const dateString = targetDate.toISOString().split("T")[0];
 
       const res = await axiosRetryRequest({
