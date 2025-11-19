@@ -12,6 +12,7 @@ import cron from "node-cron";
 const PG_GROUP_JID = "120363404470997481@g.us";
 const cateringServiceJID = "919847413782@s.whatsapp.net";
 const PG_MEMBERS = [
+  { id: "919778250566@s.whatsapp.net", name: "Anas Ikka" },
   { id: "919074211782@s.whatsapp.net", name: "Akash Ettayi" },
   { id: "919645829304@s.whatsapp.net", name: "Akhii Bhaii" },
   { id: "919188775142@s.whatsapp.net", name: "Alvin Puliveli" },
@@ -174,7 +175,7 @@ async function startSock() {
         console.log(`✅ ${senderName} has submitted their order.`);
       }
 
-      await sock.sendMessage(jid, { text: reply || "✅ Order received" });
+      await sock.sendMessage(jid, { text: reply || "✅ Order received" } , {quoted: msg});
     } catch (err) {
       await sock.sendMessage(jid, {
         text: "Application server down. Please try again",
