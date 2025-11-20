@@ -130,6 +130,7 @@ async function startSock() {
         }
       } else if (connection === "open") {
         console.log("✅ Connected to WhatsApp");
+        dynamicReminder(sock);
         try {
           await sock.sendPresenceUpdate("unavailable");
           presenceCtrl.startHeartbeat(5 * 60 * 1000); // every 5 minutes
@@ -207,7 +208,6 @@ async function startSock() {
       text: "📢 Good evening! Please submit your food order for tomorrow.\n\nFor breakfast and lunch please order before 9PM",
     });
     console.log("✅ Sent 7:30 PM reminder to PG group");
-    dynamicReminder(sock);
   });
 
   // Breakfast summary (9:30 PM IST)
