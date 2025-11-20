@@ -175,7 +175,11 @@ async function startSock() {
         console.log(`✅ ${senderName} has submitted their order.`);
       }
 
-      await sock.sendMessage(jid, { text: reply || "✅ Order received" } , {quoted: msg});
+      await sock.sendMessage(
+        jid,
+        { text: reply || "✅ Order received" },
+        { quoted: msg }
+      );
     } catch (err) {
       await sock.sendMessage(jid, {
         text: "Application server down. Please try again",
@@ -344,44 +348,38 @@ async function startSock() {
 
 // Dynamic reminders loop
 async function dynamicReminder(sock) {
-  const interval = 180 * 60 * 1000; // 120 minutes
+  const interval = 120 * 60 * 1000; // 120 minutes
 
   const checkReplies = async () => {
     try {
       const now = new Date();
-      const utcHour = now.getUTCHours();
-      const utcMinute = now.getUTCMinutes();
-      const istHour = (utcHour + 5 + Math.floor((utcMinute + 30) / 60)) % 24;
 
-      console.log(`IST Hour: ${istHour}`);
-      console.log(`Checking for missing orders at ${now.toLocaleTimeString()}`);
+      // Correct IST conversion
+      const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+      const istHour = ist.getHours();
 
-      // Skip reminders between 1 AM and 6 AM
+      console.log("IST Hour:", istHour);
+
+      // Skip 1 AM - 6 AM
       if (istHour >= 1 && istHour < 6) {
-        console.log("😴 Sleeping hours (1 AM - 6 AM). Skipping reminders.");
-        setTimeout(checkReplies, interval);
-        return;
+        console.log("😴 Sleeping hours 1 AM - 6 AM → skipping");
+        return setTimeout(checkReplies, interval);
       }
 
-      // Decide whether to check today's or tomorrow's orders
       let targetDate = new Date();
       let day = "today";
-      if (istHour >= 1 && istHour < 6) {
-        console.log("🕛 Midnight - 1 AM edge case. Skipping.");
-        setTimeout(checkReplies, interval);
-        return;
-      } else if (istHour >= 6 && istHour < 13) {
-        console.log("🌞 Between 6 AM - 1 PM → Checking today's orders");
-        day = "today";
+
+      if (istHour >= 6 && istHour < 13) {
+        console.log("🌞 Checking today's orders");
       } else if (istHour >= 20) {
         targetDate.setDate(targetDate.getDate() + 1);
-        console.log("🌙 After 8 PM → Checking tomorrow's orders");
         day = "tomorrow";
+        console.log("🌙 Checking tomorrow's orders");
       } else {
-        console.log("🕛Skipping reminders.");
-        setTimeout(checkReplies, interval);
-        return;
+        console.log("⏳ No reminder window now");
+        return setTimeout(checkReplies, interval);
       }
+
       const dateString = targetDate.toISOString().split("T")[0];
 
       const res = await axiosRetryRequest({
@@ -390,37 +388,34 @@ async function dynamicReminder(sock) {
       });
 
       const missing = res.data.missing_users || [];
-      console.log(
-        `Checked for missing orders (${dateString}). ${missing.length} pending.`
-      );
+      console.log(`Missing count: ${missing.length}`);
 
       if (missing.length === 0) {
         await sock.sendMessage(PG_GROUP_JID, {
-          text: `✅ All members have already submitted their food orders for *${day}*!`,
+          text: `✅ All members have submitted their food orders for *${day}*!`,
         });
-        return;
+        return setTimeout(checkReplies, interval);
       }
 
-      // Build mentions
       const mentions = missing.map((m) => m.whatsapp_id);
-      const memberListString = missing
+      const listString = missing
         .map(
           (m, i) => `${i + 1}. @${m.whatsapp_id.split("@")[0]} (${m.username})`
         )
         .join("\n");
 
       await sock.sendMessage(PG_GROUP_JID, {
-        text: `⚠️ The following members have not yet submitted their food orders for *${day}*:\n\n${memberListString}\n\nPlease submit your order ASAP!`,
-        mentions: mentions,
+        text: `⚠️ The following members have not submitted their orders for *${day}*:\n\n${listString}\n\nPlease submit ASAP!`,
+        mentions,
       });
     } catch (err) {
-      console.error("❌ Dynamic reminder fetch failed:", err.message);
+      console.error("❌ Dynamic reminder failed:", err.message);
     }
 
     setTimeout(checkReplies, interval);
   };
 
-  setTimeout(checkReplies, 0);
+  checkReplies();
 }
 
 // Start bot
