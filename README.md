@@ -1,6 +1,6 @@
 # PG APP — WhatsApp Meal Ordering Bot
 
-> Lightweight WhatsApp bot that collects daily meal orders from a PG (paying-guest) group, posts summaries, and notifies the catering service. Built with Baileys and a small backend API.
+> Lightweight WhatsApp bot part for an PG Agent that collects daily meal orders from a PG (paying-guest) group, posts summaries, and notifies the catering service. Built with Baileys and a small backend API.
 
 **Tech stack**: Node.js, @whiskeysockets/baileys, axios, node-cron, qrcode
 
