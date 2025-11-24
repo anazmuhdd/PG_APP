@@ -130,7 +130,6 @@ async function startSock() {
         }
       } else if (connection === "open") {
         console.log("✅ Connected to WhatsApp");
-        dynamicReminder(sock);
         try {
           await sock.sendPresenceUpdate("unavailable");
           presenceCtrl.startHeartbeat(5 * 60 * 1000); // every 5 minutes
@@ -208,6 +207,7 @@ async function startSock() {
       text: "📢 Good evening! Please submit your food order for tomorrow.\n\nFor breakfast and lunch please order before 9PM",
     });
     console.log("✅ Sent 7:30 PM reminder to PG group");
+    dynamicReminder(sock);
   });
 
   // Breakfast summary (9:30 PM IST)
@@ -348,7 +348,7 @@ async function startSock() {
 
 // Dynamic reminders loop
 async function dynamicReminder(sock) {
-  const interval = 120 * 60 * 1000; // 120 minutes
+  const interval = 180 * 60 * 1000; // 180 minutes
 
   const checkReplies = async () => {
     try {
@@ -369,7 +369,7 @@ async function dynamicReminder(sock) {
       let targetDate = new Date();
       let day = "today";
 
-      if (istHour >= 6 && istHour < 13) {
+      if (istHour >= 6 && istHour < 12) {
         console.log("🌞 Checking today's orders");
       } else if (istHour >= 20) {
         targetDate.setDate(targetDate.getDate() + 1);
