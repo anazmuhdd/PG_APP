@@ -130,6 +130,9 @@ async function startSock() {
         }
       } else if (connection === "open") {
         console.log("✅ Connected to WhatsApp");
+        await sock.sendMessage(PG_GROUP_JID, {
+          text: "🤖 Bot has been started.\nPlease submit your food orders as usual.\nThank you.",
+        });
         try {
           await sock.sendPresenceUpdate("unavailable");
           presenceCtrl.startHeartbeat(5 * 60 * 1000); // every 5 minutes
