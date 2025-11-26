@@ -3,12 +3,38 @@ import {
   makeWASocket,
   DisconnectReason,
   Browsers,
+  generateWAMessageFromContent
 } from "@whiskeysockets/baileys";
 import axios from "axios";
 import qrcode from "qrcode-terminal";
 import QRCode from "qrcode";
 import cron from "node-cron";
+import nodemailer from "nodemailer";
 
+
+
+const EMAIL_TRANSPORTER = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
+  auth: {
+    user: "anazmohammed4games@gmail.com",      
+    pass: "kgypohjdqwapyceu",             
+  },
+});
+
+async function sendAlertEmail(originalMsg, replyMsgId) {
+  console.warn("Sending email...");
+  await EMAIL_TRANSPORTER.sendMail({
+    from: 'anazmohammed4games@gmail.com',
+    to: "anasmonar@gmail.com",
+    subject: "❗ Auto-Reply Not Seen – Follow Up Needed",
+    text: `Your friend sent: "${originalMsg}"\n\nYour auto-reply (ID: ${replyMsgId}) was not seen within 2 hours.\nPlease call or check manually.`,
+  });
+  console.warn("Email sent!");
+}
+let pendingReplyTimeouts = new Map();
+let connected=0;
 const PG_GROUP_JID = "120363404470997481@g.us";
 const cateringServiceJID = "919847413782@s.whatsapp.net";
 const PG_MEMBERS = [
@@ -23,6 +49,8 @@ const PG_MEMBERS = [
   { id: "919207605231@s.whatsapp.net", name: "Chunnikutta" },
   { id: "918590730424@s.whatsapp.net", name: "Vishuu" },
 ];
+
+
 async function axiosRetryRequest(config, retries = 3, delay = 1000) {
   try {
     return await axios(config);
@@ -91,7 +119,7 @@ async function startSock() {
     browser: Browsers.macOS("WhatsApp Bot"),
     connectTimeoutMs: 60_000,
     keepAliveIntervalMs: 30_000,
-    shouldSyncHistoryMessages: false,
+    shouldSyncHistoryMessages: () => false,
   });
 
   const presenceCtrl = createPresenceController(sock);
@@ -130,9 +158,12 @@ async function startSock() {
         }
       } else if (connection === "open") {
         console.log("✅ Connected to WhatsApp");
-        await sock.sendMessage(PG_GROUP_JID, {
+        if (connected === 0){
+          await sock.sendMessage(PG_GROUP_JID, {
           text: "🤖 Bot has been started.\nPlease submit your food orders as usual.\nThank you.",
-        });
+          });
+          connected = 1
+        }
         try {
           await sock.sendPresenceUpdate("unavailable");
           presenceCtrl.startHeartbeat(5 * 60 * 1000); // every 5 minutes
@@ -191,6 +222,24 @@ async function startSock() {
     }
   });
 
+  sock.ev.on("messages.update", async ({ updates }) => {
+    for (const update of updates) {
+      if (update.key.remoteJid === cateringServiceJID) {
+        console.log("Received message update from Catering Service :", update);
+        const id=update.key.id
+        const status=update.update.status
+        if(pendingReplyTimeouts.has(id) && status===4){
+          console.log("Message has been seen by catering service, for the order with id: ",id)
+          const timer=pendingReplyTimeouts.get(id)
+          if(timer){
+            clearTimeout(timer)
+            pendingReplyTimeouts.delete(id)
+          }
+        }
+      }
+    }
+  });
+
   // Keep backend alive
   cron.schedule("*/5 * * * *", async () => {
     try {
@@ -228,6 +277,7 @@ async function startSock() {
       });
       const orders = res.data.orders;
       if (!orders || orders.length === 0 || res.data.total_orders === 0) {
+        console.log("No dinner orders found..SKipping")
         return;
       }
 
@@ -261,10 +311,41 @@ async function startSock() {
       \n${lunchCount} പേർക്ക് ഊണ് വേണം.`;
 
       if (breakfastCount > 0 || lunchCount > 0) {
-        await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
+        // await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
+        const catmsg=generateWAMessageFromContent(
+          cateringServiceJID,
+          { text: malayalamMsg },
+          { userJid: sock.user.id }
+        );
+
+        await sock.relayMessage(
+          cateringServiceJID,
+          catmsg.message,
+          {messageId: catmsg.key.id},
+        );
+        
+        const lunchdinnreplyid=catmsg.key.id;
+
+        console.log("✅ Sent lunch and breakfast orders to catering service with reply id:", lunchdinnreplyid);
+        const timeinterval=1*60*60*1000;
+        const timeout=setTimeout(async () => {
+          console.log("Checking for order seen or not")
+          if(pendingReplyTimeouts.has(lunchdinnreplyid)){
+            console.log("Message not seen, sending mail!!!")
+            await sendAlertEmail(malayalamMsg,lunchdinnreplyid);
+            console.log("Email sent")
+            pendingReplyTimeouts.delete(lunchdinnreplyid);
+          }
+          else{
+            console.log("Message seen by the catering PG Service!!!!")
+            return;
+          }
+        })
+        pendingReplyTimeouts.set(lunchdinnreplyid,timeout);
         await sock.sendMessage(PG_GROUP_JID, {
           text: "*Order for Breakfast and Lunch placed to Catering service.*",
         });
+        console.log("Breakfast and Lunch orders placed to catering service");
       }
     } catch (err) {
       console.error(err);
@@ -300,7 +381,35 @@ async function startSock() {
       const malayalamMsg = `ചേച്ചി, \n\nഇന്ന് (${indiaToday}),\n${dinnerCount} പേർക്ക് രാത്രി ഭക്ഷണം വേണം.`;
 
       if (dinnerCount > 0) {
-        await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
+        // await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
+        const catmsg=generateWAMessageFromContent(
+          cateringServiceJID,
+          { text: malayalamMsg },
+          { userJid: sock.user.id }
+        );
+
+        await sock.relayMessage(
+          cateringServiceJID,
+          catmsg.message,
+          {messageId: catmsg.key.id},
+        );
+        const dinnerreplyid=catmsg.key.id;
+        console.log("✅ Sent dinner orders to catering service with reply id:", dinnerreplyid);
+        const timeinterval=2*60*60*1000;
+        const timeout=setTimeout(async () => {
+          if(pendingReplyTimeouts.has(dinnerreplyid)){
+            console.log("Dinner message not seen by the Catering Service!!!")
+            await sendAlertEmail(malayalamMsg,dinnerreplyid);
+            console.log("Email sent.!!!")
+            pendingReplyTimeouts.delete(dinnerreplyid);
+          }
+          else{
+            console.log("Message seen by catering Service.!!!")
+            return;
+          }
+        })
+        pendingReplyTimeouts.set(dinnerreplyid,timeout);
+        console.log("Dinner orders placed to catering service");
       }
       await sock.sendMessage(PG_GROUP_JID, { text: dinnerSummaryMsg });
       console.log("✅ Sent dinner summary to group and catering service");
@@ -333,12 +442,13 @@ async function startSock() {
       }
 
       let summary = "📊 *Today's Orders Summary*:\n\n";
+      let num=0
       for (const o of orders) {
         let meals = [];
         if (o.breakfast) meals.push("🍳 Breakfast");
         if (o.lunch) meals.push("🍛 Lunch");
         if (o.dinner) meals.push("🍽️ Dinner");
-        summary += `✅ ${o.username}: ${meals.join(", ") || "No meals"}\n`;
+        summary += `✅  ${++num}. @${o.whatsapp_id.split("@")[0]}: ${meals.join(", ") || "No meals"}\n`;
       }
 
       await sock.sendMessage(PG_GROUP_JID, { text: summary });
