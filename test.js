@@ -140,7 +140,6 @@ async function startSock() {
   });
 
   sock.ev.on("creds.update", saveCreds);
-
   // ===== HANDLE INCOMING MESSAGES =====
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
@@ -148,7 +147,6 @@ async function startSock() {
     const jid = msg.key.remoteJid;
     const sender = msg.key.participant || msg.key.remoteJid;
     const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
-
     // Only respond to your friend and ignore your own messages
     if (sender !== FRIEND_JID || msg.key.fromMe || !text) return;
 
@@ -158,31 +156,25 @@ async function startSock() {
     await new Promise((r) => setTimeout(r, 5000));
 
     // Auto-reply with the same message
-    const replyMsg = generateWAMessageFromContent(
-      jid,
-      { conversation: text },
-      { userJid: sock.user.id }
-    );
-
-    await sock.relayMessage(jid, replyMsg.message, { messageId: replyMsg.key.id });
-    const replyId = replyMsg.key.id;
-    console.log(`📤 Auto-replied (ID: ${replyId})`);
-    // Set 2-min timeout to check if seen
-    const twoHours = 1 * 60 * 1000;
-    const timeout = setTimeout(async () => {
-      if (pendingReplyTimeouts.has(replyId))
-      {
-        console.warn(`❗ Reply ${replyId} not seen in 2 mins. Sending email...`);
-        await sendAlertEmail(text, replyId);
-        pendingReplyTimeouts.delete(replyId);
-      }
-      else
-      {
-        return;
-      }
-    }, twoHours);
-    pendingReplyTimeouts.set(replyId, timeout);
-    console.log("prendinf reply: ",pendingReplyTimeouts)
+    const replyMsg = await sock.sendMessage(jid, { text });
+    console.log("📤 Auto-replied: ", replyMsg);
+    // console.log(`📤 Auto-replied (ID: ${replyId})`);
+    // // Set 2-min timeout to check if seen
+    // const twoHours = 1 * 60 * 1000;
+    // const timeout = setTimeout(async () => {
+    //   if (pendingReplyTimeouts.has(replyId))
+    //   {
+    //     console.warn(`❗ Reply ${replyId} not seen in 2 mins. Sending email...`);
+    //     await sendAlertEmail(text, replyId);
+    //     pendingReplyTimeouts.delete(replyId);
+    //   }
+    //   else
+    //   {
+    //     return;
+    //   }
+    // }, twoHours);
+    // pendingReplyTimeouts.set(replyId, timeout);
+    // console.log("prendinf reply: ",pendingReplyTimeouts)
   });
 
   // ===== TRACK MESSAGE READ STATUS =====
@@ -233,4 +225,25 @@ startSock().catch(console.error);
     participant: undefined
   },
   update: { status: 3 }
+}
+📤 Auto-replied:  WebMessageInfo {
+  messageStubParameters: [],
+  labels: [],
+  userReceipt: [],
+  reactions: [],
+  pollUpdates: [],
+  eventResponses: [],
+  statusMentions: [],
+  messageAddOns: [],
+  statusMentionSources: [],
+  supportAiCitations: [],
+  key: MessageKey {
+    remoteJid: '917306256667@s.whatsapp.net',
+    fromMe: true,
+    id: '3EB0D8ABB79D1BB0D8B8D5'
+  },
+  message: Message { extendedTextMessage: { text: 'Helloooi' } },
+  messageTimestamp: Long { low: 1764228422, high: 0, unsigned: true },
+  status: 1
+}
 */

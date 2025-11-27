@@ -305,22 +305,13 @@ async function startSock() {
       }\n\nNo more orders can be placed for lunch now.`;
 
       await sock.sendMessage(PG_GROUP_JID, { text: lunchSummaryMsg });
-      console.log("✅ Sent lunch summary to group and catering service");
+      console.log("✅ Sent breakfast and lunch summary to group");
 
       const malayalamMsg = `ചേച്ചി, \n\nനാളെ (${indiaTomorrow}),\n${breakfastCount} പേർക്ക് ബ്രേക്ക്‌ഫാസ്റ്റ് വേണം.
       \n${lunchCount} പേർക്ക് ഊണ് വേണം.`;
 
       if (breakfastCount > 0 || lunchCount > 0) {
-        // await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
-        const catmsg = generateWAMessageFromContent(
-          cateringServiceJID,
-          { conversation: malayalamMsg },
-          { userJid: sock.user.id }
-        );
-
-        await sock.relayMessage(cateringServiceJID, catmsg.message, {
-          messageId: catmsg.key.id,
-        });
+        const catmsg = await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
 
         const lunchdinnreplyid = catmsg.key.id;
 
@@ -381,16 +372,8 @@ async function startSock() {
       const malayalamMsg = `ചേച്ചി, \n\nഇന്ന് (${indiaToday}),\n${dinnerCount} പേർക്ക് രാത്രി ഭക്ഷണം വേണം.`;
 
       if (dinnerCount > 0) {
-        // await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
-        const catmsg = generateWAMessageFromContent(
-          cateringServiceJID,
-          { conversation: malayalamMsg },
-          { userJid: sock.user.id }
-        );
-
-        await sock.relayMessage(cateringServiceJID, catmsg.message, {
-          messageId: catmsg.key.id,
-        });
+        const catmsg = await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
+        
         const dinnerreplyid = catmsg.key.id;
         console.log(
           "✅ Sent dinner orders to catering service with reply id:",
