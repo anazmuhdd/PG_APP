@@ -155,12 +155,12 @@ async function startSock() {
         }
       } else if (connection === "open") {
         console.log("✅ Connected to WhatsApp");
-        if (connected === 0) {
-          await sock.sendMessage(PG_GROUP_JID, {
-            text: "🤖 Bot has been started.\nPlease submit your food orders as usual.\nThank you.",
-          });
-          connected = 1;
-        }
+        // if (connected === 0) {
+        //   await sock.sendMessage(PG_GROUP_JID, {
+        //     text: "🤖 Bot has been started.\nPlease submit your food orders as usual.\nThank you.",
+        //   });
+        //   connected = 1;
+        // }
         try {
           await sock.sendPresenceUpdate("unavailable");
           presenceCtrl.startHeartbeat(5 * 60 * 1000); // every 5 minutes
@@ -175,7 +175,6 @@ async function startSock() {
   );
 
   sock.ev.on("creds.update", saveCreds);
-
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
     const msg = messages[0];
