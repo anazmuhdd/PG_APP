@@ -221,7 +221,6 @@ async function startSock() {
 
   sock.ev.on("messages.update", (updates) => {
     for (const update of updates) {
-      console.log(update);
       if (update.key.remoteJid === cateringServiceJID) {
         console.log("Received message update from Catering Service :", update);
         const id = update.key.id;
