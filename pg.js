@@ -73,7 +73,6 @@ function createPresenceController(sock) {
     lastPresenceAt = now;
     try {
       await sock.sendPresenceUpdate("unavailable");
-      console.log("presence: sent 'unavailable'");
     } catch (err) {
       console.warn(
         "presence: failed to send 'unavailable'",
@@ -164,9 +163,6 @@ async function startSock() {
         try {
           await sock.sendPresenceUpdate("unavailable");
           presenceCtrl.startHeartbeat(5 * 60 * 1000); // every 5 minutes
-          console.log(
-            "presence: initial 'unavailable' sent and heartbeat started"
-          );
         } catch (err) {
           console.warn("presence initial update failed:", err?.message || err);
         }
@@ -221,7 +217,6 @@ async function startSock() {
   sock.ev.on("messages.update", (updates) => {
     for (const update of updates) {
       if (update.key.remoteJid === cateringServiceJID) {
-        console.log("Received message update from Catering Service :", update);
         const id = update.key.id;
         const status = update.update.status;
         if (pendingReplyTimeouts.has(id) && status === 4) {
@@ -232,8 +227,8 @@ async function startSock() {
           const timer = pendingReplyTimeouts.get(id);
           if (timer) {
             clearTimeout(timer);
-            pendingReplyTimeouts.delete(id);
           }
+          pendingReplyTimeouts.delete(id);
         }
       }
     }
@@ -246,7 +241,6 @@ async function startSock() {
         method: "GET",
         url: "https://pg-app-backend.onrender.com/ping",
       });
-      console.log("🔄 Pinged backend to keep Render alive");
     } catch (err) {
       console.error("Ping failed:", err.message);
     }
@@ -276,7 +270,7 @@ async function startSock() {
       });
       const orders = res.data.orders;
       if (!orders || orders.length === 0 || res.data.total_orders === 0) {
-        console.log("No dinner orders found..SKipping");
+        console.log("No Breakfast and Lunch orders found..SKipping");
         return;
       }
 
@@ -295,7 +289,6 @@ async function startSock() {
 
       await sock.sendMessage(PG_GROUP_JID, { text: breakfastSummaryMsg });
 
-      console.log("✅ Sent breakfast summary to group and catering service");
 
       const lunchSummaryMsg = `🍛 *Lunch Orders for Today*\n\n${
         lunchNames.length > 0
@@ -304,7 +297,6 @@ async function startSock() {
       }\n\nNo more orders can be placed for lunch now.`;
 
       await sock.sendMessage(PG_GROUP_JID, { text: lunchSummaryMsg });
-      console.log("✅ Sent breakfast and lunch summary to group");
 
       const malayalamMsg = `ചേച്ചി, \n\nനാളെ (${indiaTomorrow}),\n${breakfastCount} പേർക്ക് ബ്രേക്ക്‌ഫാസ്റ്റ് വേണം.
       \n${lunchCount} പേർക്ക് ഊണ് വേണം.`;
@@ -314,10 +306,6 @@ async function startSock() {
 
         const lunchdinnreplyid = catmsg.key.id;
 
-        console.log(
-          "✅ Sent lunch and breakfast orders to catering service with reply id:",
-          lunchdinnreplyid
-        );
         const timeinterval = 1 * 60 * 60 * 1000;
         const timeout = setTimeout(async () => {
           console.log("Checking for order seen or not");
@@ -335,7 +323,7 @@ async function startSock() {
         await sock.sendMessage(PG_GROUP_JID, {
           text: "*Order for Breakfast and Lunch placed to Catering service.*",
         });
-        console.log("Breakfast and Lunch orders placed to catering service");
+        console.log("Breakfast and Lunch orders placed to catering service successfully");
       }
     } catch (err) {
       console.error(err);
@@ -374,10 +362,6 @@ async function startSock() {
         const catmsg = await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
         
         const dinnerreplyid = catmsg.key.id;
-        console.log(
-          "✅ Sent dinner orders to catering service with reply id:",
-          dinnerreplyid
-        );
         const timeinterval = 2 * 60 * 60 * 1000;
         const timeout = setTimeout(async () => {
           if (pendingReplyTimeouts.has(dinnerreplyid)) {
@@ -391,7 +375,6 @@ async function startSock() {
           }
         }, timeinterval);
         pendingReplyTimeouts.set(dinnerreplyid, timeout);
-        console.log("Dinner orders placed to catering service");
       }
       await sock.sendMessage(PG_GROUP_JID, { text: dinnerSummaryMsg });
       console.log("✅ Sent dinner summary to group and catering service");
@@ -454,8 +437,6 @@ async function dynamicReminder(sock) {
       // Correct IST conversion
       const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
       const istHour = ist.getHours();
-
-      console.log("IST Hour:", istHour);
 
       // Skip 1 AM - 6 AM
       if (istHour >= 1 && istHour < 6) {
