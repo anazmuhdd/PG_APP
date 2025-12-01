@@ -10,6 +10,7 @@ import qrcode from "qrcode-terminal";
 import QRCode from "qrcode";
 import cron from "node-cron";
 import nodemailer from "nodemailer";
+import pino from "pino";
 
 const EMAIL_TRANSPORTER = nodemailer.createTransport({
   host: "smtp.gmail.com",
@@ -116,7 +117,12 @@ async function startSock() {
     connectTimeoutMs: 60_000,
     keepAliveIntervalMs: 30_000,
     shouldSyncHistoryMessages: () => false,
-  });
+
+    logger: pino({
+        level: "silent"
+      }),
+    },
+  );
 
   const presenceCtrl = createPresenceController(sock);
 
