@@ -411,6 +411,7 @@ async function startSock() {
         return;
       }
 
+      // Fix the issue with incorrect mentions in the summary message
       let summary = "📊 *Today's Orders Summary*:\n\n";
       let num = 0;
       for (const o of orders) {
@@ -418,9 +419,13 @@ async function startSock() {
         if (o.breakfast) meals.push("🍳 Breakfast");
         if (o.lunch) meals.push("🍛 Lunch");
         if (o.dinner) meals.push("🍽️ Dinner");
-        summary += `✅  ${++num}. @${o.whatsapp_id.split("@")[0]}: ${
-          meals.join(", ") || "No meals"
-        }\n`;
+
+        // Ensure correct mention format by using the participant's ID
+        const mentionId = o.whatsapp_id.includes("@s.whatsapp.net")
+          ? o.whatsapp_id.split("@")[0]
+          : o.whatsapp_id;
+
+        summary += `✅  ${++num}. @${mentionId}: ${meals.join(", ") || "No meals"}\n`;
       }
 
       await sock.sendMessage(PG_GROUP_JID, { text: summary });
