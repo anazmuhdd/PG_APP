@@ -252,7 +252,7 @@ async function startSock() {
     }
   });
 
-  // Evening reminder + start dynamic reminders
+
   cron.schedule("00 14 * * *", async () => {
     await sock.sendMessage(PG_GROUP_JID, {
       text: "📢 Good evening! Please submit your food order for tomorrow.\n\nFor breakfast and lunch please order before 9PM",
@@ -261,7 +261,6 @@ async function startSock() {
     dynamicReminder(sock);
   });
 
-  // Breakfast summary (9:30 PM IST)
   cron.schedule("00 16 * * *", async () => {
     const now = new Date();
     const indiaOffsetMs = 5.5 * 60 * 60 * 1000;
@@ -430,77 +429,22 @@ async function startSock() {
       console.error("Summary fetch failed:", err.message);
     }
   });
+
+  // Reminder for breakfast and lunch orders 
+  cron.schedule("30 15 * * *", async () => {
+    await sock.sendMessage(PG_GROUP_JID, {
+      text: "🌙 *Reminder*\n\n Only *30 minutes* left for placing *breakfast and lunch.* Please submit your breakfast and lunch orders. 🍳🍛",
+    });
+    console.log("✅ Sent 9:00 PM IST reminder for breakfast and lunch orders.");
+  });
+
+  // Reminder for lunch orders 
+  cron.schedule("30 6 * * *", async () => {
+    await sock.sendMessage(PG_GROUP_JID, {
+      text: "🍛 *Reminder*\n\n Only *30 minutes* left for placing *Dinner.*Please submit your lunch orders. ⏰",
+    });
+    console.log("✅ Sent 12:00 PM IST reminder for dinner orders.");
+  });
 }
 
-// Dynamic reminders loop
-async function dynamicReminder(sock) {
-  const interval = 180 * 60 * 1000; // 180 minutes
-
-  const checkReplies = async () => {
-    try {
-      const now = new Date();
-
-      // Correct IST conversion
-      const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
-      const istHour = ist.getHours();
-
-      // Skip 1 AM - 6 AM
-      if (istHour >= 1 && istHour < 6) {
-        console.log("😴 Sleeping hours 1 AM - 6 AM → skipping");
-        return setTimeout(checkReplies, interval);
-      }
-
-      let targetDate = new Date();
-      let day = "today";
-
-      if (istHour >= 6 && istHour < 12) {
-        console.log("🌞 Checking today's orders");
-      } else if (istHour >= 20) {
-        targetDate.setDate(targetDate.getDate() + 1);
-        day = "tomorrow";
-        console.log("🌙 Checking tomorrow's orders");
-      } else {
-        console.log("⏳ No reminder window now");
-        return setTimeout(checkReplies, interval);
-      }
-
-      const dateString = targetDate.toISOString().split("T")[0];
-
-      const res = await axiosRetryRequest({
-        method: "GET",
-        url: `https://pg-app-backend.onrender.com/missing_orders?date=${dateString}`,
-      });
-
-      const missing = res.data.missing_users || [];
-      console.log(`Missing count: ${missing.length}`);
-
-      if (missing.length === 0) {
-        await sock.sendMessage(PG_GROUP_JID, {
-          text: `✅ All members have submitted their food orders for *${day}*!`,
-        });
-        return setTimeout(checkReplies, interval);
-      }
-
-      const mentions = missing.map((m) => m.whatsapp_id);
-      const listString = missing
-        .map(
-          (m, i) => `${i + 1}. @${m.whatsapp_id.split("@")[0]} (${m.username})`
-        )
-        .join("\n");
-
-      await sock.sendMessage(PG_GROUP_JID, {
-        text: `⚠️ The following members have not submitted their orders for *${day}*:\n\n${listString}\n\nPlease submit ASAP!`,
-        mentions,
-      });
-    } catch (err) {
-      console.error("❌ Dynamic reminder failed:", err.message);
-    }
-
-    setTimeout(checkReplies, interval);
-  };
-
-  checkReplies();
-}
-
-// Start bot
 startSock().catch(console.error);
