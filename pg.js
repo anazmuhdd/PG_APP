@@ -425,7 +425,7 @@ async function startSock() {
 
         summary += `${++num}. @${mentionId} : ${meals.join(", ") || "No meals"}\n`;
       }
-      mentionedjids=[];
+      let mentionedjids=[];
       for (const o of orders) {
         mentionedjids.push(o.whatsapp_id);
       }
