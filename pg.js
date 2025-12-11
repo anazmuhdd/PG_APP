@@ -426,9 +426,12 @@ async function startSock() {
 
         summary += `✅  ${++num}. @${mentionId}: ${meals.join(", ") || "No meals"}\n`;
       }
-
-      await sock.sendMessage(PG_GROUP_JID, { text: summary });
-      console.log("✅ Sent 10 AM summary to group");
+      mentionedjids=[];
+      for (const o of orders) {
+        mentionedjids.push(o.whatsapp_id);
+      }
+      await sock.sendMessage(PG_GROUP_JID, { text: summary, mentions: mentionedjids });
+      console.log("✅ Sent 7:00 PM summary to group");
     } catch (err) {
       console.error("Summary fetch failed:", err.message);
     }
@@ -437,7 +440,7 @@ async function startSock() {
   // Reminder for breakfast and lunch orders 
   cron.schedule("30 15 * * *", async () => {
     await sock.sendMessage(PG_GROUP_JID, {
-      text: "🌙 *Reminder*\n\n Only *30 minutes* left for placing *breakfast and lunch.* Please submit your breakfast and lunch orders. 🍳🍛",
+      text: "🌙 *Reminder*\n\nOnly *30 minutes* left for placing *breakfast and lunch.* Please submit your breakfast and lunch orders.🍳🍛",
     });
     console.log("✅ Sent 9:00 PM IST reminder for breakfast and lunch orders.");
   });

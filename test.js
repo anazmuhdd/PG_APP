@@ -12,12 +12,11 @@ import QRCode from "qrcode";
 import cron from "node-cron";
 import nodemailer from "nodemailer";
 
-// ===== CONFIG =====
 const PG_GROUP_JID = "120363404470997481@g.us";
 const cateringServiceJID = "919847413782@s.whatsapp.net";
 
-// 👇 YOUR FRIEND'S JID (replace with your actual WhatsApp number in JID format)
-const FRIEND_JID = "917306256667@s.whatsapp.net"; // e.g., "919876543210@s.whatsapp.net"
+
+const FRIEND_JID = "917306256667@s.whatsapp.net"; 
 
 const PG_MEMBERS = [
   { id: "919074211782@s.whatsapp.net", name: "Akash" },
@@ -30,7 +29,7 @@ const PG_MEMBERS = [
   { id: "919207605231@s.whatsapp.net", name: "Nikhil" },
 ];
 
-// ===== EMAIL SETUP =====
+
 const EMAIL_TRANSPORTER = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
@@ -50,7 +49,7 @@ async function sendAlertEmail(originalMsg, replyMsgId) {
   });
 }
 
-// ===== UTILS =====
+
 async function axiosRetryRequest(config, retries = 3, delay = 1000) {
   try {
     return await axios(config);
@@ -94,7 +93,7 @@ function createPresenceController(sock) {
   return { startHeartbeat, stopHeartbeat };
 }
 
-// ===== MAIN BOT =====
+
 const pendingReplyTimeouts = new Map();
 
 async function startSock() {
@@ -113,7 +112,7 @@ async function startSock() {
 
   const presenceCtrl = createPresenceController(sock);
 
-  // ===== HANDLE CONNECTION =====
+  
   sock.ev.on("connection.update", async ({ connection, qr, lastDisconnect }) => {
     if (qr) {
       console.log("📲 Scan QR:");
@@ -140,22 +139,22 @@ async function startSock() {
   });
 
   sock.ev.on("creds.update", saveCreds);
-  // ===== HANDLE INCOMING MESSAGES =====
+  
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
     const msg = messages[0];
     const jid = msg.key.remoteJid;
     const sender = msg.key.participant || msg.key.remoteJid;
     const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
-    // Only respond to your friend and ignore your own messages
+    
     if (sender !== FRIEND_JID || msg.key.fromMe || !text) return;
 
     console.log(`📩 From friend: ${text}`);
 
-    // Wait 5 seconds before replying
+    
     await new Promise((r) => setTimeout(r, 5000));
 
-    // Auto-reply with the same message
+    
     const replyMsg = await sock.sendMessage(jid, { text });
     console.log("📤 Auto-replied: ", replyMsg);
     // console.log(`📤 Auto-replied (ID: ${replyId})`);
@@ -177,7 +176,7 @@ async function startSock() {
     // console.log("prendinf reply: ",pendingReplyTimeouts)
   });
 
-  // ===== TRACK MESSAGE READ STATUS =====
+  
   sock.ev.on("messages.update", (updates) => {
     for (const update of updates) {
       console.log(update);
@@ -195,7 +194,7 @@ async function startSock() {
   return sock;
 }
 
-// Start the bot
+
 startSock().catch(console.error);
 
 /*
