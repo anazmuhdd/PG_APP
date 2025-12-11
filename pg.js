@@ -419,12 +419,11 @@ async function startSock() {
         if (o.breakfast) meals.push("🍳 Breakfast");
         if (o.lunch) meals.push("🍛 Lunch");
         if (o.dinner) meals.push("🍽️ Dinner");
-
         const mentionId = o.whatsapp_id.includes("@s.whatsapp.net")
           ? o.whatsapp_id.split("@")[0]
           : o.whatsapp_id;
 
-        summary += `✅  ${++num}. @${mentionId}: ${meals.join(", ") || "No meals"}\n`;
+        summary += `${++num}. @${mentionId} : ${meals.join(", ") || "No meals"}\n`;
       }
       mentionedjids=[];
       for (const o of orders) {
