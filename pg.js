@@ -119,10 +119,9 @@ async function startSock() {
     shouldSyncHistoryMessages: () => false,
 
     logger: pino({
-        level: "silent"
-      }),
-    },
-  );
+      level: "silent",
+    }),
+  });
 
   const presenceCtrl = createPresenceController(sock);
 
@@ -252,13 +251,11 @@ async function startSock() {
     }
   });
 
-
   cron.schedule("00 14 * * *", async () => {
     await sock.sendMessage(PG_GROUP_JID, {
       text: "📢 Good evening! Please submit your food order for tomorrow.\n\nFor breakfast and lunch please order before 9PM",
     });
     console.log("✅ Sent 7:30 PM reminder to PG group");
-    dynamicReminder(sock);
   });
 
   cron.schedule("00 16 * * *", async () => {
@@ -294,7 +291,6 @@ async function startSock() {
 
       await sock.sendMessage(PG_GROUP_JID, { text: breakfastSummaryMsg });
 
-
       const lunchSummaryMsg = `🍛 *Lunch Orders for Today*\n\n${
         lunchNames.length > 0
           ? lunchNames.map((n, i) => `${i + 1}. ${n}`).join("\n")
@@ -307,7 +303,9 @@ async function startSock() {
       \n${lunchCount} പേർക്ക് ഊണ് വേണം.`;
 
       if (breakfastCount > 0 || lunchCount > 0) {
-        const catmsg = await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
+        const catmsg = await sock.sendMessage(cateringServiceJID, {
+          text: malayalamMsg,
+        });
 
         const lunchdinnreplyid = catmsg.key.id;
 
@@ -328,7 +326,9 @@ async function startSock() {
         await sock.sendMessage(PG_GROUP_JID, {
           text: "*Order for Breakfast and Lunch placed to Catering service.*",
         });
-        console.log("Breakfast and Lunch orders placed to catering service successfully");
+        console.log(
+          "Breakfast and Lunch orders placed to catering service successfully"
+        );
       }
     } catch (err) {
       console.error(err);
@@ -364,8 +364,10 @@ async function startSock() {
       const malayalamMsg = `ചേച്ചി, \n\nഇന്ന് (${indiaToday}),\n${dinnerCount} പേർക്ക് രാത്രി ഭക്ഷണം വേണം.`;
 
       if (dinnerCount > 0) {
-        const catmsg = await sock.sendMessage(cateringServiceJID, { text: malayalamMsg });
-        
+        const catmsg = await sock.sendMessage(cateringServiceJID, {
+          text: malayalamMsg,
+        });
+
         const dinnerreplyid = catmsg.key.id;
         const timeinterval = 2 * 60 * 60 * 1000;
         const timeout = setTimeout(async () => {
@@ -411,7 +413,6 @@ async function startSock() {
         return;
       }
 
-  
       let summary = "📊 *Today's Orders Summary*:\n\n";
       let num = 0;
       for (const o of orders) {
@@ -423,20 +424,25 @@ async function startSock() {
           ? o.whatsapp_id.split("@")[0]
           : o.whatsapp_id;
 
-        summary += `${++num}. @${mentionId} : ${meals.join(", ") || "No meals"}\n`;
+        summary += `${++num}. @${mentionId} : ${
+          meals.join(", ") || "No meals"
+        }\n`;
       }
-      let mentionedjids=[];
+      let mentionedjids = [];
       for (const o of orders) {
         mentionedjids.push(o.whatsapp_id);
       }
-      await sock.sendMessage(PG_GROUP_JID, { text: summary, mentions: mentionedjids });
+      await sock.sendMessage(PG_GROUP_JID, {
+        text: summary,
+        mentions: mentionedjids,
+      });
       console.log("✅ Sent 7:00 PM summary to group");
     } catch (err) {
       console.error("Summary fetch failed:", err.message);
     }
   });
 
-  // Reminder for breakfast and lunch orders 
+  // Reminder for breakfast and lunch orders
   cron.schedule("30 15 * * *", async () => {
     await sock.sendMessage(PG_GROUP_JID, {
       text: "🌙 *Reminder*\n\nOnly *30 minutes* left for placing *breakfast and lunch.* Please submit your breakfast and lunch orders.🍳🍛",
@@ -444,7 +450,7 @@ async function startSock() {
     console.log("✅ Sent 9:00 PM IST reminder for breakfast and lunch orders.");
   });
 
-  // Reminder for lunch orders 
+  // Reminder for lunch orders
   cron.schedule("30 6 * * *", async () => {
     await sock.sendMessage(PG_GROUP_JID, {
       text: "🍛 *Reminder*\n\n Only *30 minutes* left for placing *Dinner.*Please submit your lunch orders. ⏰",
