@@ -14,15 +14,12 @@ const cateringServiceJID = "919847413782@s.whatsapp.net";
 
 // Members list (from pg.js)
 const PG_MEMBERS = [
-  { id: "919778250566@s.whatsapp.net", name: "Anas Ikka" },
   { id: "919074211782@s.whatsapp.net", name: "Akash Ettayi" },
   { id: "919645829304@s.whatsapp.net", name: "Akhii Bhaii" },
   { id: "919188775142@s.whatsapp.net", name: "Alvin Puliveli" },
   { id: "917306731189@s.whatsapp.net", name: "Sheikhikka" },
-  { id: "919207066956@s.whatsapp.net", name: "Kasi Kutta" },
   { id: "916238007254@s.whatsapp.net", name: "Kuriappi" },
   { id: "919188712388@s.whatsapp.net", name: "Pro Nihal" },
-  { id: "919207605231@s.whatsapp.net", name: "Chunnikutta" },
   { id: "918590730424@s.whatsapp.net", name: "Vishuu" },
 ];
 
