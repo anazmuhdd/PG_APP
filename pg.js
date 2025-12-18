@@ -193,7 +193,7 @@ async function startSock() {
     try {
       const res = await axiosRetryRequest({
         method: "POST",
-        url: "https://pg-app-backend.onrender.com/process",
+        url: "https://pg-app-backend-7pq9.onrender.com/process",
         data: {
           message: text,
           user_id: sender,
@@ -244,7 +244,7 @@ async function startSock() {
     try {
       await axiosRetryRequest({
         method: "GET",
-        url: "https://pg-app-backend.onrender.com/ping",
+        url: "https://pg-app-backend-7pq9.onrender.com/ping",
       });
     } catch (err) {
       console.error("Ping failed:", err.message);
@@ -268,7 +268,7 @@ async function startSock() {
     try {
       const res = await axiosRetryRequest({
         method: "GET",
-        url: `https://pg-app-backend.onrender.com/detailed_summary?date=${indiaTomorrow}`,
+        url: `https://pg-app-backend-7pq9.onrender.com/detailed_summary?date=${indiaTomorrow}`,
       });
       const orders = res.data.orders;
       if (!orders || orders.length === 0 || res.data.total_orders === 0) {
@@ -344,7 +344,7 @@ async function startSock() {
     try {
       const res = await axiosRetryRequest({
         method: "GET",
-        url: `https://pg-app-backend.onrender.com/detailed_summary?date=${indiaToday}`,
+        url: `https://pg-app-backend-7pq9.onrender.com/detailed_summary?date=${indiaToday}`,
       });
       const orders = res.data.orders;
       if (!orders || orders.length === 0 || res.data.total_orders === 0) {
@@ -402,7 +402,7 @@ async function startSock() {
 
       const res = await axiosRetryRequest({
         method: "GET",
-        url: `https://pg-app-backend.onrender.com/detailed_summary?date=${dateString}`,
+        url: `https://pg-app-backend-7pq9.onrender.com/detailed_summary?date=${dateString}`,
       });
 
       const orders = res.data.orders;
