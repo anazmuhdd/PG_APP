@@ -48,7 +48,7 @@ async function axiosRetryRequest(config, retries = 3, delay = 1000) {
   } catch (err) {
     if (err.response && err.response.status === 500 && retries > 0) {
       console.warn(
-        `⚠️ Server 500 error. Retrying ${config.url} in ${delay}ms...`
+        `⚠️ Server 500 error. Retrying ${config.url} in ${delay}ms...`,
       );
       await new Promise((r) => setTimeout(r, delay));
       return axiosRetryRequest(config, retries - 1, delay * 2);
@@ -71,7 +71,7 @@ function createPresenceController(sock) {
     } catch (err) {
       console.warn(
         "presence: failed to send 'unavailable'",
-        err?.message || err
+        err?.message || err,
       );
     }
   }
@@ -121,7 +121,7 @@ async function sendMonthlyBillingMessages(sock) {
         const memberOrders = res.data.orders || [];
         const totalAmount = memberOrders.reduce(
           (sum, order) => sum + order.total_amount,
-          0
+          0,
         );
 
         billingData[member.name] = {
@@ -131,12 +131,12 @@ async function sendMonthlyBillingMessages(sock) {
         };
 
         console.log(
-          `✅ ${member.name}: ${memberOrders.length} orders, ₹${totalAmount}`
+          `✅ ${member.name}: ${memberOrders.length} orders, ₹${totalAmount}`,
         );
       } catch (err) {
         console.warn(
           `⚠️ Failed to fetch orders for ${member.name}:`,
-          err.message
+          err.message,
         );
         failedMembers.push(member.name);
         billingData[member.name] = {
@@ -160,7 +160,7 @@ async function sendMonthlyBillingMessages(sock) {
       // Skip if no orders
       if (totalAmount === 0) {
         console.log(
-          `⏭️  Skipping ${member.name} (no orders for ${MONTH_FULL})`
+          `⏭️  Skipping ${member.name} (no orders for ${MONTH_FULL})`,
         );
         skipCount++;
         continue;
@@ -185,7 +185,7 @@ async function sendMonthlyBillingMessages(sock) {
 
 Hello ${member.name},
 
-Your total food order amount for *November* is:
+Your total food order amount for *December* is:
 
 🔢 *₹${totalAmount}*
 
@@ -194,6 +194,7 @@ Your total food order amount for *November* is:
 ${ORDER_DETAILS_WEBSITE}
 
 Please make the payment at your earliest convenience.
+If paid, reply as paid.
 
 Thank you! 🙏`;
 
@@ -205,7 +206,7 @@ Thank you! 🙏`;
       } catch (err) {
         console.error(
           `❌ Failed to send message to ${member.name}:`,
-          err.message
+          err.message,
         );
       }
 
@@ -287,7 +288,7 @@ async function startSock() {
         console.log("\n⏱️  Starting billing process in 2 seconds...");
         setTimeout(() => sendMonthlyBillingMessages(sock), 2000);
       }
-    }
+    },
   );
 
   sock.ev.on("creds.update", saveCreds);
