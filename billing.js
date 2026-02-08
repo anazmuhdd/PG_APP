@@ -14,23 +14,25 @@ const cateringServiceJID = "919847413782@s.whatsapp.net";
 
 // Members list (from pg.js)
 const PG_MEMBERS = [
+  { id: "919778250566@s.whatsapp.net", name: "Anas Ikka" },
   { id: "919074211782@s.whatsapp.net", name: "Akash Ettayi" },
   { id: "919645829304@s.whatsapp.net", name: "Akhii Bhaii" },
   { id: "919188775142@s.whatsapp.net", name: "Alvin Puliveli" },
   { id: "917306731189@s.whatsapp.net", name: "Sheikhikka" },
+  { id: "919207066956@s.whatsapp.net", name: "Kasi Kutta" },
   { id: "916238007254@s.whatsapp.net", name: "Kuriappi" },
   { id: "919188712388@s.whatsapp.net", name: "Pro Nihal" },
+  { id: "919207605231@s.whatsapp.net", name: "Chunnikutta" },
   { id: "918590730424@s.whatsapp.net", name: "Vishuu" },
 ];
 
-const BACKEND_URL = "https://pg-app-backend.onrender.com";
+const BACKEND_URL = "https://pg-app-backend-7pq9.onrender.com";
 const ORDER_DETAILS_WEBSITE =
   process.env.ORDER_DETAILS_WEBSITE || "https://rajahamsam-pg.vercel.app/";
 
 // Get billing month from env or use default (11 for November)
-const BILLING_MONTH = process.env.BILLING_MONTH || "11";
-const BILLING_YEAR =
-  process.env.BILLING_YEAR || new Date().getFullYear().toString();
+const BILLING_MONTH = process.env.BILLING_MONTH || "12";
+const BILLING_YEAR = process.env.BILLING_YEAR || "2025";
 const MONTH_FULL = `${BILLING_YEAR}-${BILLING_MONTH.padStart(2, "0")}`;
 
 console.log("✅ Billing Bot Config loaded:");
